@@ -62,6 +62,14 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.accessibility.AccessibilityNodeInfo;
 
+import android.util.Base64;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.List;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import com.android.commands.monkey.Monkey;
 import com.android.commands.monkey.utils.MonkeyUtils;
 import com.android.commands.monkey.action.Action;
@@ -424,6 +432,218 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
         mEventCount++;
         return popEvent();
     }
+
+    // public MonkeyEvent getNextEvent() {
+    //     checkAppActivity();
+    //     if (!hasEvent()) {
+    //         try {
+    //             // 在生成事件前获取当前UI状态
+    //             AccessibilityNodeInfo rootNode = getRootInActiveWindow();
+    //             if (rootNode != null) {// 应添加判断当前页面是否访问过的功能-todo
+    //                 // 提取当前界面上所有可交互元素的图标
+    //                 extractWidgetIcons(rootNode);
+    //                 rootNode.recycle(); // 确保回收资源
+    //             }
+                
+    //             generateEvents();
+    //         } catch (RuntimeException e) {
+    //             Logger.errorPrintln(e.getMessage());
+    //             e.printStackTrace();
+    //             clearEvent();
+    //             return null;
+    //         }
+    //     }
+    //     mEventCount++;
+    //     return popEvent();
+    // }
+
+    /**
+     * 提取当前界面上所有可交互元素的图标
+     * @param rootNode 当前界面的根节点
+     */
+    private void extractWidgetIcons(AccessibilityNodeInfo rootNode, String activityName) {
+        if (rootNode == null) return;
+        
+        // 创建一个列表存储所有提取的图标信息
+        //List<WidgetIconInfo> iconInfoList = new ArrayList<>();
+        Map<String, String> iconMap = new HashMap<>();
+        
+        // 递归遍历UI树并提取图标
+        extractWidgetIconsRecursive(rootNode, iconMap);
+        
+        // 如果有图标被提取，将它们序列化并传递到C++端
+        if (!iconMap.isEmpty()) {
+            String serializedIcons = serializeWidgetIcons(iconMap);
+            // 调用JNI方法将序列化后的图标信息传递到C++端
+            sendWidgetIconsToNative(activityName, serializedIcons);//todo
+        }
+    }
+
+    private void extractWidgetIconsRecursive(AccessibilityNodeInfo node, Map<String, String> iconMap) {
+        if (node == null) return;
+        
+        // 检查节点是否可点击、可滚动等可交互属性
+        if (node.isClickable() || node.isScrollable() || node.isLongClickable()) {
+            // 获取节点的边界
+            Rect bounds = new Rect();
+            node.getBoundsInScreen(bounds);
+            
+            // 捕获该区域的截图作为图标
+            Bitmap iconBitmap = captureWidgetIcon(bounds);
+            if (iconBitmap != null) {
+                // 生成widget的唯一标识
+                String widgetId = getWidgetIdentifier(node);
+                
+                // 将图标转换为Base64字符串
+                String base64Icon = bitmapToBase64(iconBitmap);
+                
+                // 添加到Map中
+                iconMap.put(widgetId, base64Icon);
+                
+                iconBitmap.recycle(); // 回收Bitmap资源
+            }
+        }
+        
+        // 递归处理子节点
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo childNode = node.getChild(i);
+            if (childNode != null) {
+                extractWidgetIconsRecursive(childNode, iconMap);
+                childNode.recycle(); // 确保回收子节点资源
+            }
+        }
+    }
+    
+    /**
+     * 获取Widget的唯一标识符
+     * @param node AccessibilityNodeInfo节点
+     * @return Widget的唯一标识符
+     */
+    private String getWidgetIdentifier(AccessibilityNodeInfo node) {
+        // 优先使用resourceId作为标识符
+        String resourceId = node.getViewIdResourceName();
+        if (resourceId != null && !resourceId.isEmpty()) {
+            return resourceId;
+        }
+        
+        // 如果没有resourceId，使用类名和边界作为标识
+        StringBuilder identifier = new StringBuilder();
+        if (node.getClassName() != null) {
+            identifier.append(node.getClassName());
+        }
+        
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        identifier.append("_").append(bounds.toShortString());
+        
+        // 如果有文本或内容描述，也加入到标识中
+        if (node.getText() != null) {
+            identifier.append("_").append(node.getText());
+        } else if (node.getContentDescription() != null) {
+            identifier.append("_").append(node.getContentDescription());
+        }
+        
+        return identifier.toString();
+    }
+    /**
+     * 捕获指定区域的截图作为Widget图标
+     * @param bounds 要捕获的区域
+     * @return 捕获的Bitmap，如果失败则返回null
+     */
+    private Bitmap captureWidgetIcon(Rect bounds) {
+        try {
+            // 捕获整个屏幕
+            Bitmap screenBitmap = mUiAutomation.takeScreenshot();
+            if (screenBitmap == null) return null;
+
+            // 确保边界在屏幕范围内
+            int screenWidth = screenBitmap.getWidth();
+            int screenHeight = screenBitmap.getHeight();
+
+            if (bounds.left < 0 || bounds.top < 0 || 
+                bounds.right > screenWidth || bounds.bottom > screenHeight ||
+                bounds.width() <= 0 || bounds.height() <= 0) {
+                screenBitmap.recycle();
+                return null;
+            }
+
+            // 裁剪出Widget区域
+            Bitmap iconBitmap = Bitmap.createBitmap(
+                screenBitmap, 
+                bounds.left, 
+                bounds.top, 
+                bounds.width(), 
+                bounds.height()
+            );
+
+            screenBitmap.recycle(); // 回收屏幕截图资源
+            return iconBitmap;
+        } catch (Exception e) {
+            Logger.errorPrintln("Failed to capture widget icon: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 将Bitmap转换为字节数组
+     * @param bitmap 要转换的Bitmap
+     * @return 转换后的字节数组
+     */ 
+    private String bitmapToBase64(Bitmap bitmap) {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+        byte[] byteArray = stream.toByteArray();
+        return Base64.encodeToString(byteArray, Base64.DEFAULT);
+    }
+    /**
+     * 序列化Widget图标信息为JSON字符串
+     * @param iconMap 包含widget ID和对应图标Base64字符串的映射
+     * @return 序列化后的JSON字符串
+     */
+    private String serializeWidgetIcons(Map<String, String> iconMap) {
+        try {
+            JSONObject jsonObject = new JSONObject();
+
+            // 遍历Map，将每个键值对添加到JSON对象中
+            for (Map.Entry<String, String> entry : iconMap.entrySet()) {
+                jsonObject.put(entry.getKey(), entry.getValue());
+            }
+
+            return jsonObject.toString();
+        } catch (JSONException e) {
+            Logger.errorPrintln("Failed to serialize widget icons: " + e.getMessage());
+            return "{}";
+        }
+    }
+
+    
+    /**
+     * 将序列化后的Widget图标信息发送到C++端
+     * @param activityName 当前活动的名称
+     * @param serializedIcons 序列化后的图标信息
+     */
+    private void sendWidgetIconsToNative(String activityName, String serializedIcons) {
+        try {
+            AiClient.setWidgetIcons(activityName, serializedIcons);
+        } catch (Exception e) {
+            Logger.errorPrintln("Failed to send widget icons to native: " + e.getMessage());
+        }
+    }
+
+    // /**
+    //  * 存储Widget图标信息的类
+    //  */
+    // private static class WidgetIconInfo {
+    //     public String id;          // Widget的资源ID
+    //     public Rect bounds;        // Widget在屏幕上的边界
+    //     public String className;   // Widget的类名
+    //     public String text;        // Widget的文本内容
+    //     public String contentDesc; // Widget的内容描述
+    //     public byte[] iconData;    // Widget图标的图像数据
+    //     public boolean isClickable;      // 是否可点击
+    //     public boolean isScrollable;     // 是否可滚动
+    //     public boolean isLongClickable;  // 是否可长按
+    // }
 
     public Random getRandom() {
         return mRandom;
@@ -898,6 +1118,7 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
 
         // If node is not null, build tree and recycle this resource.
         if (info!=null){
+            extractWidgetIcons(info, topActivityName.getClassName());
             stringOfGuiTree = TreeBuilder.dumpDocumentStrWithOutTree(info);
             if (mVerbose > 3) Logger.println("//" + stringOfGuiTree);
             info.recycle();

@@ -36,6 +36,10 @@ namespace fastbotx {
         /// \return true if it's been visited before
         bool isVisited() const { return _visitedCount > 0; }
 
+        /// Set the visited status
+        /// \param visited true if this node has been visited
+        void setVisited(bool visited) { _visitedCount = visited ? 1 : 0; }
+
         /// Get the visited count
         /// \return Visited count
         int getVisitedCount() const { return this->_visitedCount; }

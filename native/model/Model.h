@@ -8,6 +8,8 @@
 #define  Model_H_
 
 #include <memory>
+#include <mutex>
+#include <unordered_map>
 #include "Base.h"
 #include "State.h"
 #include "Element.h"
@@ -16,6 +18,7 @@
 #include "AbstractAgent.h"
 #include "AgentFactory.h"
 #include "Preference.h"
+#include "desc/reuse/ReuseState.h"
 
 namespace fastbotx {
 
@@ -72,6 +75,8 @@ namespace fastbotx {
         OperatePtr getOperateOpt(const ElementPtr &element, const std::string &activity,
                                  const std::string &deviceID = "");
 
+        void setWidgetIcons(const std::string& activityName, const std::map<std::string, std::string>& iconMap);
+
         PreferencePtr getPreference() const { return this->_preference; }
 
         void setPackageName(
@@ -97,6 +102,11 @@ namespace fastbotx {
         // The parameters for communicating with the net model
         NetActionParam _netActionParam;
 
+        // 存储Widget图标数据的映射表
+        std::unordered_map<std::string, std::string> _widgetIconMap;
+
+        // 当前状态
+        StatePtr _currentState;
     };
 
     typedef std::shared_ptr<Model> ModelPtr;

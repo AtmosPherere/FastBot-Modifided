@@ -109,7 +109,7 @@ namespace fastbotx {
         int unvisited = 0;
         // find this action in this model according to its int hash
         // according to the given action, get the activities that this action could reach in reuse model.
-        auto actionMapIterator = this->_reuseModel.find(action->hash());
+        auto actionMapIterator = this->_reuseModel.find(action->hash());//(*actionMapIterator).first is hash, second is ReuseEntryMap --by me,init in line 496
         if (actionMapIterator != this->_reuseModel.end()) {
             // Iterate the map containing entry of activity name and visited count
             // to ascertain the unvisited activity count according to the pre-saved reuse model
@@ -216,7 +216,7 @@ namespace fastbotx {
             if (iter == this->_reuseModel.end()) {
                 BDLOG("can not find action %s in reuse map", modelAction->getId().c_str());
                 ReuseEntryM entryMap;
-                entryMap.emplace(std::make_pair(activity, 1));
+                entryMap.emplace(std::make_pair(activity, 1));//this->_reuseModel的数据格式为：hash->(activity->count)
                 this->_reuseModel[hash] = entryMap;
             } else {
                 ((*iter).second)[activity] += 1;
@@ -440,7 +440,7 @@ namespace fastbotx {
     /// the serialized model file with the ReuseModel.fbs
     /// by FlatBuffers
     /// \param packageName The package name of the tested application
-    void ModelReusableAgent::loadReuseModel(const std::string &packageName) {
+    void ModelReusableAgent::loadReuseModel(const std::string &packageName) {//->变为加载多个模型文件
         std::string modelFilePath = STORAGE_PREFIX + packageName + ".fbm";
 
         this->_modelSavePath = modelFilePath;
@@ -485,7 +485,7 @@ namespace fastbotx {
             for (int targetIndex = 0; targetIndex < activityEntry->size(); targetIndex++) {
                 auto targetEntry = activityEntry->Get(targetIndex);
                 BDLOG("load model hash: %llu %s %d", actionHash,
-                      targetEntry->activity()->str().c_str(), (int) targetEntry->times());
+                      targetEntry->activity()->str().c_str(), (int) targetEntry->times());//actionHash->activity_name->count
                 entryPtr.insert(std::make_pair(
                         std::make_shared<std::string>(targetEntry->activity()->str()),
                         (int) targetEntry->times()));
@@ -493,7 +493,7 @@ namespace fastbotx {
             if (!entryPtr.empty()) {
                 std::lock_guard<std::mutex> reuseGuard(this->_reuseModelLock);
 //            this->_reuseQValue.insert(std::make_pair(actionHash, reuseEntryInReuseModel->quality()));
-                this->_reuseModel.insert(std::make_pair(actionHash, entryPtr));
+                this->_reuseModel.insert(std::make_pair(actionHash, entryPtr));//把模型数据取出来存到当前的_reuseModel中
             }
         }
         BLOG("loaded model contains actions: %zu", this->_reuseModel.size());
@@ -505,18 +505,84 @@ namespace fastbotx {
     /// With the FlatBuffer library, serialize the ReuseModel according to ReuseModel.fbs,
     /// and save the data to modelFilePath.
     /// \param modelFilepath the path to save this serialized model.
+    // {
+    // action_hash_1: {
+    //     activity_name_1: count_1,
+    //     activity_name_2: count_2,
+    //     ...
+    // },
+    // action_hash_2: {
+    //     activity_name_3: count_3,
+    //     activity_name_4: count_4,
+    //     ...
+    // },
+    // ...
+    // }
     void ModelReusableAgent::saveReuseModel(const std::string &modelFilepath) {
         flatbuffers::FlatBufferBuilder builder;
         std::vector<flatbuffers::Offset<fastbotx::ReuseEntry>> actionActivityVector;
         // loaded, but not visited
         {
             std::lock_guard<std::mutex> reuseGuard(this->_reuseModelLock);
-            for (const auto &actionIterator: this->_reuseModel) {
+            for (const auto &actionIterator: this->_reuseModel) {//reuseModel的数据格式为：hash->(activity->count)
                 uint64_t actionHash = actionIterator.first;
                 ReuseEntryM activityCountEntryMap = actionIterator.second;
                 std::vector<flatbuffers::Offset<fastbotx::ActivityTimes>> activityCountEntryVector; // flat buffer needs vector rather than map
                 for (const auto &activityCountEntry: activityCountEntryMap) {
                     auto sentryActT = CreateActivityTimes(builder, builder.CreateString(
+                            *(activityCountEntry.first)), activityCountEntry.second);
+                    activityCountEntryVector.push_back(sentryActT);
+                }
+                auto savedActivityCountEntries = CreateReuseEntry(builder, actionHash,
+                                                                  builder.CreateVector(
+                                                                          activityCountEntryVector.data(),
+                                                                          activityCountEntryVector.size()));
+                actionActivityVector.push_back(savedActivityCountEntries);
+            }
+        }
+        auto savedActionActivityEntries = CreateReuseModel(builder, builder.CreateVector(
+                actionActivityVector.data(), actionActivityVector.size()));
+        builder.Finish(savedActionActivityEntries);
+
+        //save to local file
+        std::string outputFilePath = modelFilepath;
+        if (outputFilePath.empty()) // if the passed argument modelFilepath is "", use the tmpSavePath
+            outputFilePath = this->_defaultModelSavePath;
+        BLOG("save model to path: %s", outputFilePath.c_str());
+        std::ofstream outputFile(outputFilePath);
+        outputFile.write((char *) builder.GetBufferPointer(), static_cast<int>(builder.GetSize()));
+        outputFile.close();
+    }
+
+    // {用widget->hash()作为key，保存widget->count}?
+    // action_hash_1: {
+    //     widget_hash_1: count_1,
+    //     widget_hash_2: count_1,
+    //     ...
+    //     widget_hash_3: count_2,
+    //     widget_hash_4: count_2,
+    // },
+    // action_hash_2: {
+    //     widget_hash_5: count_3,
+    //     widget_hash_6: count_3,
+    //     ...
+    //     widget_hash_7: count_4,
+    //     widget_hash_8: count_4,
+    // },
+    // ...
+    // }
+    void ModelReusableAgent::saveReuseModel_at_widget_level(const std::string &modelFilepath) {
+        flatbuffers::FlatBufferBuilder builder;
+        std::vector<flatbuffers::Offset<fastbotx::ReuseEntry>> actionActivityVector;
+        // loaded, but not visited
+        {
+            std::lock_guard<std::mutex> reuseGuard(this->_reuseModelLock);
+            for (const auto &actionIterator: this->_reuseModel) {//reuseModel的数据格式为：hash->(activity->count)
+                uint64_t actionHash = actionIterator.first;
+                ReuseEntryM activityCountEntryMap = actionIterator.second;//todo: 从activity->count 转换为 widget->count
+                std::vector<flatbuffers::Offset<fastbotx::ActivityTimes>> activityCountEntryVector; // flat buffer needs vector rather than map
+                for (const auto &activityCountEntry: activityCountEntryMap) {
+                    auto sentryActT = CreateActivityTimes(builder, builder.CreateString(//todo: 需要设计一个CreateWidgetTimes
                             *(activityCountEntry.first)), activityCountEntry.second);
                     activityCountEntryVector.push_back(sentryActT);
                 }

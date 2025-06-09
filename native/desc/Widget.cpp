@@ -192,6 +192,19 @@ namespace fastbotx {
         return _hashcode;
     }
 
+    void Widget::setIcon(const std::string& base64Icon) {
+        if (!base64Icon.empty()) {
+            _icon = std::make_shared<WidgetIcon>(base64Icon);
+        }
+    }
+
+    WidgetIconPtr Widget::getIcon() const {
+        return _icon;
+    }
+
+    bool Widget::hasIcon() const {
+        return _icon != nullptr && !_icon->isEmpty();
+    }
 }
 
 #endif //Widget_CPP_

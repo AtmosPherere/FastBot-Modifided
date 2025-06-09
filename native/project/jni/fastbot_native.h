@@ -23,6 +23,10 @@ Java_com_bytedance_fastbot_AiClient_fgdsaf5d(JNIEnv *env, jobject, jint, jstring
 //loadResMapping
 JNIEXPORT void JNICALL Java_com_bytedance_fastbot_AiClient_jdasdbil(JNIEnv *env, jobject, jstring);
 
+// 在extern "C" { 块内添加
+JNIEXPORT void JNICALL Java_com_bytedance_fastbot_AiClient_sendWidgetIcons(
+    JNIEnv *env, jobject obj, jstring serializedIcons);
+
 JNIEXPORT jboolean JNICALL
 Java_com_bytedance_fastbot_AiClient_nkksdhdk(JNIEnv *env, jobject, jstring activity, jfloat pointX,
                                              jfloat pointY);

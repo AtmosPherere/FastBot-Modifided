@@ -40,7 +40,7 @@ namespace fastbotx {
             state = *ifStateExists;
         }
 
-        this->notifyNewStateEvents(state);
+        this->notifyNewStateEvents(state);//初始化modelreuseagent里的_newstate
 
         this->_visitedActivities.emplace(
                 activity); // add this activity name to this set, and in this set, every name is unique.
@@ -72,11 +72,24 @@ namespace fastbotx {
     void Graph::addActionFromState(const StatePtr &node) {
         auto nodeActions = node->getActions();
         for (const auto &action: nodeActions) {
+            // 先检查是否有相似的已访问action
+            auto similarAction = this->findSimilarAction(std::dynamic_pointer_cast<ActivityNameAction>(action));
+
             auto itervisted = this->_visitedActions.find(action);
             bool visitedadd = itervisted != this->_visitedActions.end();
             auto iterunvisited = this->_unvisitedActions.find(action);
             bool unvisitedadd = !visitedadd && iterunvisited != this->_unvisitedActions.end();
-            if (visitedadd || unvisitedadd) {
+
+            if (similarAction) {
+                // 如果找到相似的action，使用该action的ID
+                BLOG("找到相似的action，使用该action的ID: %d", similarAction->getIdi());
+                action->setId(similarAction->getIdi());
+                // 如果相似的action已被访问，也将当前action标记为已访问
+                if (similarAction->isVisited()) {
+                    action->setVisited(true);
+                    BLOG("相似的action已被访问，也将当前action标记为已访问");
+                }
+            }else if (visitedadd || unvisitedadd) {
                 action->setId((visitedadd ? (*itervisted)->getIdi() : (*iterunvisited)->getIdi()));
             } else {
                 action->setId((int) this->_actionCounter.getTotal());
@@ -91,6 +104,24 @@ namespace fastbotx {
         }
         BDLOG("unvisited action: %zu, visited action %zu", this->_unvisitedActions.size(),
               this->_visitedActions.size());
+    }
+
+    ActivityNameActionPtr Graph::findSimilarAction(const ActivityNameActionPtr& action, double threshold) const {
+        if (!action) return nullptr;
+        
+        for (const auto& visitedAction : this->_visitedActions) {
+            // 将visitedAction转换为ActivityNameAction类型进行比较
+            auto activityNameAction = std::dynamic_pointer_cast<ActivityNameAction>(visitedAction);
+            if (activityNameAction && ActionSimilarity::isSimilar(action, activityNameAction, threshold)) {
+                return activityNameAction;
+            }
+        }
+        
+        return nullptr;
+    }
+    
+    bool Graph::hasSimilarAction(const ActivityNameActionPtr& action, double threshold) const {
+        return findSimilarAction(action, threshold) != nullptr;
     }
 
     Graph::~Graph() {

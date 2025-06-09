@@ -34,6 +34,8 @@ namespace fastbotx {
         // @param model filepath is "" then save to _defaultModelSavePath
         void saveReuseModel(const std::string &modelFilepath);
 
+        void saveReuseModel_at_widget_level(const std::string &modelFilepath);
+
         static void threadModelStorage(const std::weak_ptr<ModelReusableAgent> &agent);
 
         ~ModelReusableAgent() override;

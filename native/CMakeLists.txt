@@ -2,14 +2,30 @@
 cmake_minimum_required(VERSION 3.10)
 project(fastbot_native)
 
+# OpenCV configuration
+set(OpenCV_STATIC OFF)
+set(OpenCV_SHARED ON)
+
+# ONNX Runtime configuration
+set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../libs/onnxruntime")
+set(ONNXRUNTIME_INCLUDE_DIRS "${ONNXRUNTIME_DIR}/include")
+set(ONNXRUNTIME_LIBS "${ONNXRUNTIME_DIR}/libs/${ANDROID_ABI}/libonnxruntime.so")
+
 set( LIBPATH mac)
 message(STATUS  ${CMAKE_SYSTEM_NAME})
 IF (CMAKE_SYSTEM_NAME MATCHES "Android")
-  message(STATUS "${ANDROID_NDK}/sources/third_party/opencv/jni")
-  set( OpenCV_DIR "${ANDROID_NDK}/sources/third_party/opencv/jni" )
+  # Android OpenCV configuration
+  set(OpenCV_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../libs/opencv/sdk/native/jni")
+  set(OpenCV_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/../libs/opencv/sdk/native/jni/include")
+  set(OpenCV_LIBS "${CMAKE_CURRENT_SOURCE_DIR}/../libs/opencv/sdk/native/libs/${ANDROID_ABI}/libopencv_java4.so")
+  find_package(OpenCV REQUIRED)
+  include_directories(${OpenCV_INCLUDE_DIRS})
+  include_directories(${ONNXRUNTIME_INCLUDE_DIRS})
   add_definitions(-D__ANDROID__ )
   set( LIBPATH android/libs/${ANDROID_ABI}/)
 ELSEIF (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+   # macOS OpenCV configuration
+   set(OpenCV_DIR "/opt/homebrew/Cellar/opencv/4.11.0_1/lib/cmake/opencv4")
    set( LIBPATH mac)
 ELSEIF (CMAKE_SYSTEM_NAME MATCHES "Linux")
   set( LIBPATH linux)
@@ -21,7 +37,7 @@ ELSE (CMAKE_BUILD_TYPE MATCHES "Release")
 add_definitions(-D_DEBUG_)
 ENDIF (CMAKE_BUILD_TYPE MATCHES "Release")
 
-set(ANDROID_STL "c++_static")
+set(ANDROID_STL "c++_shared")
 set(CMAKE_CXX_STANDARD 14) 
 set(CMAKE_CXX_STANDARD_REQUIRED on)
 set(LOCAL_CXX_FLAGS "-std=c++14 -fPIC  -fvisibility=hidden -std=c++11 -frtti -Wno-switch-enum -Wno-switch ${LOCAL_CPPFLAGS}")
@@ -55,6 +71,7 @@ include_directories(
   "thirdpart/flatbuffers/"
   "thirdpart/tinyxml2/"
   "thirdpart/json/"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../libs/json/include"
 )
 
 file( GLOB SRC_LIST 
@@ -68,7 +85,8 @@ file( GLOB SRC_LIST
       "monkey/*.cpp" 
       "thirdpart/tinyxml2/*.cpp"
       "thirdpart/flatbuffers/*.cpp"
-      "thirdpart/json/*.hpp")
+      "thirdpart/json/*.hpp"
+      "project/jni/*.cpp")
 
 message(STATUS ${SRC_LIST})
 
@@ -78,7 +96,6 @@ add_library( # Sets the name of the library.
              SHARED
              # Provides a relative path to your source file(s).
              ${SRC_LIST}
-             "project/jni/fastbot_native.cpp"
         )
 
 find_package(Threads)
@@ -102,4 +119,6 @@ target_link_libraries(
                log
                android
                atomic
+               ${OpenCV_LIBS}
+               ${ONNXRUNTIME_LIBS}
             )

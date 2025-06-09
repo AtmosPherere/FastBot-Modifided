@@ -5,6 +5,7 @@
  * @authors Jianqiang Guo, Yuhui Su
  */
 #include "fastbot_native.h"
+#include <nlohmann/json.hpp> // JSON parsing library
 #include "Model.h"
 #include "ModelReusableAgent.h"
 #include "utils.hpp"
@@ -14,6 +15,10 @@ extern "C" {
 #endif
 
 static fastbotx::ModelPtr _fastbot_model = nullptr;
+
+// 添加全局变量用于存储图标信息
+std::unordered_map<std::string, std::map<std::string, std::string>> g_activityIconsMap;
+std::mutex g_iconsMutex; // 用于线程安全访问
 
 //getAction
 jstring JNICALL Java_com_bytedance_fastbot_AiClient_b0bhkadf(JNIEnv *env, jobject, jstring activity,
@@ -30,6 +35,40 @@ jstring JNICALL Java_com_bytedance_fastbot_AiClient_b0bhkadf(JNIEnv *env, jobjec
     env->ReleaseStringUTFChars(xmlDescOfGuiTree, xmlDescriptionCString);
     env->ReleaseStringUTFChars(activity, activityCString);
     return env->NewStringUTF(operationString.c_str());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_bytedance_fastbot_AiClient_setWidgetIcons(JNIEnv *env, jclass clazz, jstring activity_name, jstring serialized_icons) {
+    const char *activityNameChars = env->GetStringUTFChars(activity_name, nullptr);
+    const char *serializedIconsChars = env->GetStringUTFChars(serialized_icons, nullptr);
+    
+    std::string activityName(activityNameChars);
+    std::string serializedIcons(serializedIconsChars);
+    
+    // 解析JSON字符串
+    std::map<std::string, std::string> iconMap;
+    try {
+        nlohmann::json jsonObject = nlohmann::json::parse(serializedIcons);
+        
+        // 遍历JSON对象中的所有键值对
+        for (auto it = jsonObject.begin(); it != jsonObject.end(); ++it) {
+            iconMap[it.key()] = it.value();
+        }
+        
+        // 存储图标信息到全局变量
+        {
+            std::lock_guard<std::mutex> lock(g_iconsMutex);
+            g_activityIconsMap[activityName] = iconMap;
+        }
+        
+        LOGD("Stored %zu widget icons for activity: %s", iconMap.size(), activityName.c_str());
+    } catch (const std::exception& e) {
+        BLOGE("Failed to parse widget icons JSON: %s", e.what());
+    }
+    
+    // 释放Java字符串
+    env->ReleaseStringUTFChars(activity_name, activityNameChars);
+    env->ReleaseStringUTFChars(serialized_icons, serializedIconsChars);
 }
 
 // for single device, just addAgent as empty device //InitAgent

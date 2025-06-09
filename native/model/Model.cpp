@@ -13,8 +13,11 @@
 #include <ctime>
 #include <iostream>
 
-namespace fastbotx {
+// 声明外部变量
+extern std::unordered_map<std::string, std::map<std::string, std::string>> g_activityIconsMap;
+extern std::mutex g_iconsMutex;
 
+namespace fastbotx {
 
     std::shared_ptr<Model> Model::create() {
         return ModelPtr(new Model());
@@ -121,9 +124,16 @@ namespace fastbotx {
             //include all the possible actions according to the widgets inside.
             state = StateFactory::createState(agent->getAlgorithmType(), activityStringPtr,
                                               element);
+            _currentState = state;
+            std::lock_guard<std::mutex> lock(g_iconsMutex);
+            auto it = g_activityIconsMap.find(activity);
+            if (it != g_activityIconsMap.end()) {
+            // 如果有图标信息，设置到模型中
+                setWidgetIcons(activity, it->second);
+            }
             // add state
             // add this state, and the agent will treat this state as the new state(_newState)
-            state = this->_graph->addState(state);
+            state = this->_graph->addState(state);//初始化modelreuseagent里的_newstate
             state->visit(this->_graph->getTimestamp());
         }
 
@@ -188,6 +198,15 @@ namespace fastbotx {
         return opt;
     }
 
+    void Model::setWidgetIcons(const std::string& activityName, const std::map<std::string, std::string>& iconMap) {
+        // 如果当前状态已创建且活动名称匹配，则设置图标
+        if (_currentState != nullptr) {
+            auto reuseState = std::dynamic_pointer_cast<ReuseState>(_currentState);
+            if (reuseState && reuseState->getActivityString() && *(reuseState->getActivityString()) == activityName) {
+                reuseState->setWidgetIcons(iconMap);
+            }
+        }
+    }
     Model::~Model() {
         this->_deviceIDAgentMap.clear();
     }

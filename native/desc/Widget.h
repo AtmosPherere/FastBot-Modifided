@@ -13,6 +13,7 @@
 #include <string>
 #include <memory>
 #include "Element.h"
+#include "WidgetIcon.h"
 #include "../Base.h"
 
 namespace fastbotx {
@@ -33,6 +34,8 @@ namespace fastbotx {
 
         std::string getText() const { return this->_text; }
 
+        std::string getResourceID() const { return this->_resourceID; }
+
         bool getEnabled() const { return this->_enabled; }
 
         bool hasOperate(OperateType opt) const { return this->_operateMask & opt; }
@@ -46,6 +49,11 @@ namespace fastbotx {
         std::string toString() const override;
 
         std::string buildFullXpath() const;
+        void setIcon(const std::string& base64Icon);
+
+        WidgetIconPtr getIcon() const;
+        
+        bool hasIcon() const;
 
         virtual void clearDetails();
 
@@ -62,6 +70,7 @@ namespace fastbotx {
         void initFormElement(const ElementPtr &element);
 
         uintptr_t _hashcode{};
+        WidgetIconPtr _icon;
         std::shared_ptr<Widget> _parent;
         std::string _text;
         int _index{};

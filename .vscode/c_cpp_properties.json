@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/homebrew/include",                // 默认 Homebrew 的头文件路径
+                "/opt/homebrew/Cellar/opencv/4.11.0_1/include/opencv4", // OpenCV 头文件路径
+                "/opt/homebrew/Cellar/onnxruntime/1.21.1/include/onnxruntime",   // ONNX Runtime 头文件路径
+                "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1", // C++标准库路径
+                "/Library/Developer/CommandLineTools/usr/lib/clang/16/include", // Clang 内部头文件路径
+                "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include", // 系统头文件路径
+                "/Library/Developer/CommandLineTools/usr/include", // 开发者工具头文件路径
+                "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks" // 系统框架路径
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang++",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "macos-clang-arm64"
+        }
+    ],
+    "version": 4
+}

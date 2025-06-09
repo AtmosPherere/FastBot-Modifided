@@ -10,6 +10,7 @@
 #include "State.h"
 #include "Base.h"
 #include "Action.h"
+#include "../desc/reuse/ActionSimilarity.h"
 #include <map>
 
 namespace fastbotx {
@@ -63,6 +64,13 @@ namespace fastbotx {
         long getTotalDistri() const { return this->_totalDistri; }
 
         stringPtrSet getVisitedActivities() const { return this->_visitedActivities; };
+
+
+        // 查找与给定action相似的已访问action
+        ActivityNameActionPtr findSimilarAction(const ActivityNameActionPtr& action, double threshold = 0.8) const;
+
+        // 检查action是否与已访问的任何action相似
+        bool hasSimilarAction(const ActivityNameActionPtr& action, double threshold = 0.8) const;
 
         virtual ~Graph();
 

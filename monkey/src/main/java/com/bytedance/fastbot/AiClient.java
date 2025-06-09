@@ -164,4 +164,10 @@ public class AiClient {
         return Operate.fromJson(operateStr);
     }
 
+    /**
+     * 设置Widget图标信息
+     * @param activityName 当前活动的名称
+     * @param serializedIcons 序列化后的图标信息JSON字符串
+     */
+    public static native void setWidgetIcons(String activityName, String serializedIcons);
 }

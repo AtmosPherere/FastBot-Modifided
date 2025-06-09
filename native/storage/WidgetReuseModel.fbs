@@ -1,0 +1,26 @@
+namespace fastbotx;
+
+table WidgetTimes
+{
+    widget:string;
+    times:int;
+}
+
+table ActivityTimes
+{
+    activity:string;
+    widgets:[WidgetTimes];
+}
+
+table ReuseEntry
+{
+    action:ulong (key);
+    targets:[ActivityTimes];
+}
+
+table WidgetReuseModel
+{
+    model:[ReuseEntry];
+}
+
+root_type WidgetReuseModel;

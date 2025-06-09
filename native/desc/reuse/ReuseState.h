@@ -19,6 +19,7 @@ namespace fastbotx {
     public:
         static std::shared_ptr<ReuseState>
         create(const ElementPtr &element, const stringPtr &activityName);
+        void setWidgetIcons(const std::map<std::string, std::string>& iconMap);
 
     protected:
         virtual void buildStateFromElement(WidgetPtr parentWidget, ElementPtr element);

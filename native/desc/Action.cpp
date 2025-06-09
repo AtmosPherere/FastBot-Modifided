@@ -36,7 +36,7 @@ namespace fastbotx {
             case ActionType::SCROLL_RIGHT_LEFT:
                 return 2;
             default:
-                return 1;
+                return 1; 
         }
     }
 

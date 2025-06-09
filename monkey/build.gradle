@@ -66,6 +66,11 @@ android {
     }
     ndkVersion '25.2.9519653'
 
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['../libs/${ANDROID_ABI}']
+        }
+    }
 }
 
 repositories {

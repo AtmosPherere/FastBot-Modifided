@@ -36,7 +36,7 @@ namespace fastbotx {
                 if (!noMerged) {
                     uintptr_t h = widgetPtr->hash();
                     mergedWidgetCount++;
-                    if (this->_mergedWidgets.find(h) == this->_mergedWidgets.end()) {
+                    if (this->_mergedWidgets.find(h) == this->_mergedWidgets.end()) {//匹配超事件的widget
                         WidgetPtrVec tempWidgetVector;
                         tempWidgetVector.emplace_back(widgetPtr);
                         this->_mergedWidgets.emplace(h, tempWidgetVector);

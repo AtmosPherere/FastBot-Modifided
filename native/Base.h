@@ -7,24 +7,41 @@
 #ifndef BASE_H_
 #define BASE_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include <string.h>
+#include <stdlib.h>
+#include <wchar.h>
+#include <math.h>
+#include <locale.h>
+#include <time.h>
+#ifdef __cplusplus
+}
+#endif
+
+#include <cstddef>  // for size_t, ptrdiff_t, max_align_t
+#include <cstring>  // for strchr, strcpy, etc.
+#include <cstdlib>  // for malloc, free, etc.
+#include <cwchar>   // for wchar_t functions
+#include <cmath>    // for math functions
+#include <clocale>  // for locale functions
+#include <ctime>    // for time functions
+#include <sys/time.h>
 #include <string>
 #include <vector>
 #include <set>
 #include <memory>
 #include <atomic>
-#include <cstdlib>
 #include <sstream>
-#include <ctime>
-#include <sys/time.h>
 #include <thread>
 #include <functional>
 #include <chrono>
-#include <cmath>
+#include <algorithm>
 
 #include "json.hpp"
 
 #ifdef __ANDROID__
-
 #include <jni.h>
 
 namespace std {
@@ -38,7 +55,25 @@ namespace std {
 #endif //__ANDROID__
 
 namespace fastbotx {
-
+    using std::string;
+    using std::vector;
+    using std::set;
+    using std::shared_ptr;
+    using std::stringstream;
+    using std::ostringstream;
+    using std::function;
+    using std::thread;
+    using std::chrono::milliseconds;
+    using std::this_thread::sleep_for;
+    using std::dynamic_pointer_cast;
+    using std::getline;
+    using std::time;
+    using std::localtime;
+    using std::strftime;
+    using std::rand;
+    using std::srand;
+    using std::bind;
+    using std::result_of;
 
     class PriorityNode {
     public:
@@ -46,7 +81,15 @@ namespace fastbotx {
 
         virtual int getPriority() const { return this->_priority; };
 
-
+        /**
+         * @brief 重载小于运算符，用于比较两个 PriorityNode 对象的优先级。
+         * 
+         * 此函数是一个虚函数，允许派生类重写该比较逻辑。
+         * 通过比较当前对象和传入对象的优先级，判断当前对象的优先级是否低于传入对象。
+         * 
+         * @param node 用于比较的另一个 PriorityNode 对象的常量引用。
+         * @return bool 如果当前对象的优先级小于传入对象的优先级，返回 true；否则返回 false。
+         */
         virtual bool operator<(const PriorityNode &node) const {
             return this->getPriority() < node.getPriority();
         }
@@ -92,9 +135,12 @@ namespace fastbotx {
 
     // for std::sort
     template<typename T>
-    struct Comparator : public std::binary_function<std::shared_ptr<T>, std::shared_ptr<T>, bool> {
-        bool operator()(std::shared_ptr<T> const &left, std::shared_ptr<T> const &right) const {
-            return *left.get() < *right.get();
+    struct Comparator {
+        bool operator()(const std::shared_ptr<T>& a, const std::shared_ptr<T>& b) const {
+            if (!a && !b) return false;
+            if (!a) return true;
+            if (!b) return false;
+            return *a < *b;
         }
     };
 

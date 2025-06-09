@@ -133,7 +133,7 @@ public class TreeBuilder {
         String dumpstrRet = "";
         try {
             StringWriter textWriter = new StringWriter();
-            XmlSerializer serializer = Xml.newSerializer();
+            XmlSerializer serializer = Xml.newSerializer();//序列化
             serializer.setOutput(textWriter);
             serializer.startDocument("UTF-8", true);
             serializer.setFeature("http://xmlpull.org/v1/doc/features.html#indent-output", true);

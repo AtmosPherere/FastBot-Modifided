@@ -5,6 +5,7 @@
  * @authors Jianqiang Guo, Yuhui Su
  */
 
+#include "Base.h"
 #define _DEBUG_ 1
 #define TAG "[Fastbot]"
 
@@ -18,11 +19,11 @@
 #define LOGE(fmt, ...) __android_log_print(ANDROID_LOG_ERROR,TAG ,fmt, ##__VA_ARGS__)
 #define LOGF(fmt, ...) __android_log_print(ANDROID_LOG_FATAL,TAG ,fmt, ##__VA_ARGS__)
 #else
-#define Time_Format_Now (getTimeFormatStr().c_str())
-#define LOGD(fmt, ...) printf(TAG "[%s] DEBUG[%s][%s][%d]:" fmt "\n", Time_Format_Now, __FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__)
-#define LOGI(fmt, ...) printf(TAG "[%s] :" fmt "\n", Time_Format_Now ,##__VA_ARGS__)
-#define LOGW(fmt, ...) printf(TAG "[%s] WARNING:" fmt "\n", Time_Format_Now, ##__VA_ARGS__)
-#define LOGE(fmt, ...) printf(TAG "[%s] ERROR:" fmt "\n", Time_Format_Now, ##__VA_ARGS__)
+#define Time_Format_Now (fastbotx::getTimeFormatStr().c_str())
+#define LOGD(...) printf("[%s][%s][%d] ", fastbotx::getTimeFormatStr().c_str(), __FUNCTION__, __LINE__), printf(__VA_ARGS__), printf("\n")
+#define LOGI(...) printf("[%s][%s][%d] ", fastbotx::getTimeFormatStr().c_str(), __FUNCTION__, __LINE__), printf(__VA_ARGS__), printf("\n")
+#define LOGW(...) printf("[%s][%s][%d] ", fastbotx::getTimeFormatStr().c_str(), __FUNCTION__, __LINE__), printf(__VA_ARGS__), printf("\n")
+#define LOGE(...) printf("[%s][%s][%d] ", fastbotx::getTimeFormatStr().c_str(), __FUNCTION__, __LINE__), printf(__VA_ARGS__), printf("\n")
 #define LOGF(...)
 #endif
 
@@ -40,8 +41,8 @@
 //#define BDLOG(...)
 //#endif
 
-#define BLOG(fmt, ...)    LOGI(fmt,##__VA_ARGS__)
-#define BLOGE(fmt, ...)   LOGE(fmt,##__VA_ARGS__)
+#define BLOG(...) printf("[%s][%s][%d] ", fastbotx::getTimeFormatStr().c_str(), __FUNCTION__, __LINE__), printf(__VA_ARGS__), printf("\n")
+#define BLOGE(...) printf("[%s][%s][%d] ", fastbotx::getTimeFormatStr().c_str(), __FUNCTION__, __LINE__), printf(__VA_ARGS__), printf("\n")
 
 // If should drop detail after hashing
 #define DROP_DETAIL_AFTER_SATE 1

@@ -42,7 +42,7 @@ namespace fastbotx {
 
 
     void AbstractAgent::onAddNode(StatePtr node) {
-        _newState = node;
+        _newState = node;//初始化modelreuseagent里的_newstate
 
         if(BLOCK_STATE_TIME_RESTART != -1)
         {

@@ -94,12 +94,12 @@ namespace fastbotx {
             }
             for (auto action: widget->getActions()) {
                 ActivityNameActionPtr activityNameAction = std::shared_ptr<ActivityNameAction>
-                        (new ActivityNameAction(getActivityString(), widget, action));
+                        (new ActivityNameAction(getActivityString(), widget, action));//为当前state的每个widget的每个action创建一个超事件
                 // Appends a new element to the end of the container.
                 // emplace_back() constructs the object in-place at the end of the list,
                 // potentially improving performance by avoiding a copy operation,
                 // while push_back() adds a copy of the object to the end of the list.
-                _actions.emplace_back(activityNameAction);
+                _actions.emplace_back(activityNameAction);//保存超事件
             }
         }
         _backAction = std::make_shared<ActivityNameAction>(getActivityString(), nullptr,
@@ -109,13 +109,28 @@ namespace fastbotx {
 
     void ReuseState::mergeWidgetsInState() {
         WidgetPtrSet mergedWidgets;
-        int mergedCount = mergeWidgetAndStoreMergedOnes(mergedWidgets);
+        int mergedCount = mergeWidgetAndStoreMergedOnes(mergedWidgets);//合并超事件
         if (mergedCount != 0) {
             BDLOG("build state merged  %d widget", mergedCount);
             _widgets.assign(mergedWidgets.begin(), mergedWidgets.end());
         }
     }
 
+    void ReuseState::setWidgetIcons(const std::map<std::string, std::string>& iconMap) {
+        for (auto& widget : _widgets) {
+            // 使用widget的唯一标识（如resourceId或其他标识）作为键来查找对应的图标
+            std::string widgetKey = widget->getResourceID();
+            if (widgetKey.empty()) {
+                // 如果resourceId为空，可以尝试使用其他标识
+                widgetKey = std::to_string(widget->hash());
+            }
+            
+            auto it = iconMap.find(widgetKey);
+            if (it != iconMap.end()) {
+                widget->setIcon(it->second);
+            }
+        }
+    }
 
 } // namespace fastbot
 
