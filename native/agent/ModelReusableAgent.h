@@ -32,7 +32,7 @@ namespace fastbotx {
         virtual void loadReuseModel(const std::string &packageName);
 
         // @param model filepath is "" then save to _defaultModelSavePath
-        void saveReuseModel(const std::string &modelFilepath);
+        virtual void saveReuseModel(const std::string &modelFilepath);
 
         void saveReuseModel_at_widget_level(const std::string &modelFilepath);
 
@@ -51,10 +51,10 @@ namespace fastbotx {
 
         ActionPtr selectNewAction() override;
 
-        double probabilityOfVisitingNewActivities(const ActivityStateActionPtr &action,
+        virtual double probabilityOfVisitingNewActivities(const ActivityStateActionPtr &action,
                                                   const stringPtrSet &visitedActivities) const;
 
-        double getStateActionExpectationValue(const StatePtr &state,
+        virtual double getStateActionExpectationValue(const StatePtr &state,
                                               const stringPtrSet &visitedActivities) const;
 
         virtual void updateReuseModel();
@@ -69,6 +69,8 @@ namespace fastbotx {
         ActionPtr selectUnperformedActionInReuseModel() const;
 
         ActionPtr selectActionByQValue();
+
+        void computeAlphaValue();
 
 
     protected:
@@ -89,7 +91,7 @@ namespace fastbotx {
         static std::string DefaultModelSavePath; // if the saved path is not specified, use this as the default.
         std::mutex _reuseModelLock;
 
-        void computeAlphaValue();
+        
 
         double getQValue(const ActionPtr &action);
 

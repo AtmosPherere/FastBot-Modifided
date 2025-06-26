@@ -39,6 +39,8 @@ namespace fastbotx {
 
         stringPtr getActivityString() const { return this->_activity; }
 
+        const WidgetPtrVec& getWidgets() const { return _widgets; }
+
         //  implements
         std::string toString() const override;
 

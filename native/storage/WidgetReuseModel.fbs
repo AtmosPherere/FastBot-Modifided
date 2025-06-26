@@ -1,23 +1,27 @@
 namespace fastbotx;
 
-table WidgetTimes
+// widget_hash -> count
+table WidgetCount
 {
-    widget:string;
-    times:int;
+    widget_hash:ulong;
+    count:int;
 }
 
-table ActivityTimes
+// activity -> {widget_hash -> count}
+table ActivityWidgetMap
 {
     activity:string;
-    widgets:[WidgetTimes];
+    widgets:[WidgetCount];
 }
 
+// action_hash -> {activity -> {widget_hash -> count}}
 table ReuseEntry
 {
     action:ulong (key);
-    targets:[ActivityTimes];
+    activities:[ActivityWidgetMap];
 }
 
+// 整个模型
 table WidgetReuseModel
 {
     model:[ReuseEntry];

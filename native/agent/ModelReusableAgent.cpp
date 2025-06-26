@@ -63,7 +63,7 @@ namespace fastbotx {
 
     /// Based on the lastSelectedAction (newly selected action), compute its reward value
     /// \return the reward value
-    double ModelReusableAgent::computeRewardOfLatestAction() {
+    double ModelReusableAgent::computeRewardOfLatestAction() {//计算即时奖励
         double rewardValue = 0.0;
         if (nullptr != this->_newState) {
             this->computeAlphaValue();
@@ -83,7 +83,7 @@ namespace fastbotx {
             }
             rewardValue = rewardValue + (this->getStateActionExpectationValue(this->_newState,
                                                                               visitedActivities) /
-                                         sqrt(this->_newState->getVisitedCount() + 1.0));
+                                         sqrt(this->_newState->getVisitedCount() + 1.0));//对应公式4
             BLOG("total visited " ACTIVITY_VC_STR " count is %zu", visitedActivities.size());
         }
         BDLOG("reuse-cov-opti action reward=%f", rewardValue);
@@ -114,10 +114,10 @@ namespace fastbotx {
             // Iterate the map containing entry of activity name and visited count
             // to ascertain the unvisited activity count according to the pre-saved reuse model
             for (const auto &activityCountMapIterator: (*actionMapIterator).second) {
-                total += activityCountMapIterator.second;
+                total += activityCountMapIterator.second;//当前action的总执行次数
                 stringPtr activity = activityCountMapIterator.first;
                 if (visitedActivities.find(activity) == visitedActivities.end()) {
-                    unvisited += activityCountMapIterator.second;
+                    unvisited += activityCountMapIterator.second;//执行完action后遇到当前未访问过的activity次数
                 }
             }
             if (total > 0 && unvisited > 0) {
@@ -134,7 +134,7 @@ namespace fastbotx {
     ///         state is included)
     /// @return the expectation of this state reaching an unvisited activity after executing one of the action
     double ModelReusableAgent::getStateActionExpectationValue(const StatePtr &state,
-                                                              const stringPtrSet &visitedActivities) const {
+                                                              const stringPtrSet &visitedActivities) const {//计算当前活动的value值，对应公式5
         double value = 0.0;
         for (const auto &action: state->getActions()) {
             uintptr_t actionHash = action->hash();
@@ -171,21 +171,21 @@ namespace fastbotx {
             return;
         // _previousActions is a vector storing certain amount of actions, of which length equals to SarsaNStep.
         if (!this->_previousActions.empty()) {
-            this->computeRewardOfLatestAction();
+            this->computeRewardOfLatestAction();//计算即时奖励
             this->updateReuseModel();
             double value = getQValue(_newAction);
             for (int i = static_cast<int>(this->_previousActions.size()) - 1; i >= 0; i--) {
                 double currentQValue = getQValue(_previousActions[i]);
                 double currentRewardValue = this->_rewardCache[i];
                 // accumulated reward from the newest actions
-                value = currentRewardValue + SarsaRLDefaultGamma * value;
+                value = currentRewardValue + SarsaRLDefaultGamma * value;//对应公式3
                 // Should not update the q value during step (action edge) between i+1 to i+n-1
                 // The following statement is slightly different from the original sarsa RL paper.
                 // Considering to move the next statement outside of this block.
                 // Since only the oldest action should be updated.
                 if (i == 0)
                     setQValue(this->_previousActions[i],
-                              currentQValue + this->_alpha * (value - currentQValue));
+                              currentQValue + this->_alpha * (value - currentQValue));//更新q值
             }
         } else {
             BDLOG("%s", "get action value failed!");
@@ -198,7 +198,7 @@ namespace fastbotx {
         }
     }
 
-    void ModelReusableAgent::updateReuseModel() {
+    void ModelReusableAgent::updateReuseModel() {//todo:由于数据结构变了，需要修改entryMap.emplace(std::make_pair(activity, 1));和((*iter).second)[activity] += 1;
         if (this->_previousActions.empty())
             return;
         ActionPtr lastAction = this->_previousActions.back();
@@ -217,9 +217,9 @@ namespace fastbotx {
                 BDLOG("can not find action %s in reuse map", modelAction->getId().c_str());
                 ReuseEntryM entryMap;
                 entryMap.emplace(std::make_pair(activity, 1));//this->_reuseModel的数据格式为：hash->(activity->count)
-                this->_reuseModel[hash] = entryMap;
+                this->_reuseModel[hash] = entryMap;//此处为this->_reuseModel真正初始化的地方
             } else {
-                ((*iter).second)[activity] += 1;
+                ((*iter).second)[activity] += 1;//更新当前action的执行次数
             }
             auto qValueReuseEntryIter = this->_reuseQValue.find(hash);
             this->_reuseQValue[hash] = modelAction->getQValue();
@@ -391,7 +391,7 @@ namespace fastbotx {
             uintptr_t actionHash = action->hash();
             // it won't happen, since if there is am unvisited action in state, it will be
             // visited before this method is called.
-            if (action->getVisitedCount() <= 0) {
+            if (action->getVisitedCount() <= 0) {//不考虑
                 auto iterator = this->_reuseModel.find(actionHash);
                 if (iterator != this->_reuseModel.end()) {
                     qv += this->probabilityOfVisitingNewActivities(action, visitedActivities);
@@ -399,7 +399,7 @@ namespace fastbotx {
                     BDLOG("qvalue pick return a action: %s", action->toString().c_str());
                     return action;
                 }
-            }
+            }//不考虑
             qv += getQValue(action);
             qv /= entropyAlpha;
             float uniform = static_cast<float>(randomInt(0, 10)) /
@@ -408,7 +408,7 @@ namespace fastbotx {
             // use the uniform distribution and humble gumbel to add some randomness to the qv value
             if (uniform < std::numeric_limits<float>::min())
                 uniform = std::numeric_limits<float>::min();
-            qv -= log(-log(uniform));
+            qv -= log(-log(uniform));//对应公式6
             // choose the action with the highest qv value
             if (qv > maxQ) {
                 maxQ = static_cast<float >(qv);

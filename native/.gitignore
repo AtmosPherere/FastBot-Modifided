@@ -388,5 +388,25 @@ Testing/
 fastbot_native.cbp
 .cmake/
 
+# ========== 模型和 AI 推理文件 ==========
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.bin
+native/desc/reuse/models/
+models/
+checkpoints/
+
+# ========== OpenCV / 第三方静态库 ==========
+libs/opencv/
+*.a
+
+# ========== Python 脚本支持（如有） ==========
+venv/
+.env/
+__pycache__/
+*.pyc
+
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,c++,cmake,androidstudio,android,clion

@@ -12,6 +12,7 @@
 #include "utils.hpp"
 #include "Model.h"
 #include "ModelReusableAgent.h"
+#include "WidgetReusableAgent.h" 
 #include "json.hpp"
 #include "Preference.h"
 
@@ -25,7 +26,8 @@ namespace fastbotx {
     AgentFactory::create(AlgorithmType agentT, const ModelPtr &model, DeviceType deviceType) {
         AbstractAgentPtr agent = nullptr;
         // use ModelReusableAgent under all circumstances.
-        ReuseAgentPtr reuseAgent = std::make_shared<ModelReusableAgent>(model);
+        //ReuseAgentPtr reuseAgent = std::make_shared<ModelReusableAgent>(model);
+        ReuseAgentPtr reuseAgent = std::make_shared<WidgetReusableAgent>(model);
         threadDelayExec(3000, false, &ModelReusableAgent::threadModelStorage,
                         std::weak_ptr<fastbotx::ModelReusableAgent>(reuseAgent));
         agent = reuseAgent;

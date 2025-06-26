@@ -73,23 +73,35 @@ namespace fastbotx {
         auto nodeActions = node->getActions();
         for (const auto &action: nodeActions) {
             // 先检查是否有相似的已访问action
-            auto similarAction = this->findSimilarAction(std::dynamic_pointer_cast<ActivityNameAction>(action));
+            //auto similarAction = this->findSimilarAction(std::dynamic_pointer_cast<ActivityNameAction>(action));
 
             auto itervisted = this->_visitedActions.find(action);
             bool visitedadd = itervisted != this->_visitedActions.end();
             auto iterunvisited = this->_unvisitedActions.find(action);
             bool unvisitedadd = !visitedadd && iterunvisited != this->_unvisitedActions.end();
 
-            if (similarAction) {
-                // 如果找到相似的action，使用该action的ID
-                BLOG("找到相似的action，使用该action的ID: %d", similarAction->getIdi());
-                action->setId(similarAction->getIdi());
-                // 如果相似的action已被访问，也将当前action标记为已访问
-                if (similarAction->isVisited()) {
-                    action->setVisited(true);
-                    BLOG("相似的action已被访问，也将当前action标记为已访问");
-                }
-            }else if (visitedadd || unvisitedadd) {
+            // if (similarAction) {
+            //     // 如果找到相似的action，使用该action的ID
+            //     BLOG("找到相似的action，使用该action的ID: %d", similarAction->getIdi());
+            //     action->setId(similarAction->getIdi());
+            //     // 如果相似的action已被访问，也将当前action标记为已访问
+            //     if (similarAction->isVisited()) {
+            //         action->setVisited(true);
+            //         BLOG("相似的action已被访问，也将当前action标记为已访问");
+            //     }
+            // }else if (visitedadd || unvisitedadd) {
+            //     action->setId((visitedadd ? (*itervisted)->getIdi() : (*iterunvisited)->getIdi()));
+            // } else {
+            //     action->setId((int) this->_actionCounter.getTotal());
+            //     this->_actionCounter.countAction(action);
+            // }
+
+            // if (!visitedadd && action->isVisited())
+            //     this->_visitedActions.emplace(action);
+
+            // if (!unvisitedadd && !action->isVisited())
+            //     this->_unvisitedActions.emplace(action);
+            if (visitedadd || unvisitedadd) {
                 action->setId((visitedadd ? (*itervisted)->getIdi() : (*iterunvisited)->getIdi()));
             } else {
                 action->setId((int) this->_actionCounter.getTotal());

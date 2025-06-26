@@ -35,6 +35,8 @@ namespace fastbotx {
         std::string getText() const { return this->_text; }
 
         std::string getResourceID() const { return this->_resourceID; }
+        
+        std::string getClazz() const { return this->_clazz; }
 
         bool getEnabled() const { return this->_enabled; }
 

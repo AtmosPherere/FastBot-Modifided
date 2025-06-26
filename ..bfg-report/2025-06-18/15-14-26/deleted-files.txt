@@ -1,0 +1,2 @@
+2a6c98399e483a7dbe1d0a376816ea5be9a811d8 438207510 bert-base-uncased.onnx
+8fecbb0ec3ba8baeb3b6b11f7fe069efcdc5bc34 351829051 clip_image_encoder.onnx
