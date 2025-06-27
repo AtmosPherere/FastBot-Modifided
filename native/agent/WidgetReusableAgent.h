@@ -6,15 +6,14 @@
 #include "State.h"
 #include "Action.h"
 #include "Model.h"
-#include "../desc/WidgetSignature.h"
 #include <vector>
 #include <map>
 
 namespace fastbotx {
 
-    typedef std::map<WidgetSignaturePtr, int> WidgetSignatureCountMap; // widget_signature -> count
-    typedef std::map<stringPtr, WidgetSignatureCountMap> LocalActivityWidgetMap; // activity -> widget_signature_map
-    typedef std::map<uint64_t, LocalActivityWidgetMap> WidgetReuseEntryIntMap; // action_hash -> activity_map
+    typedef std::map<uint64_t, int> WidgetCountMap;// widget_hash -> count
+    typedef std::map<stringPtr, WidgetCountMap> LocalActivityWidgetMap;// activity -> widget map
+    typedef std::map<uint64_t, LocalActivityWidgetMap> WidgetReuseEntryIntMap;// action_hash -> activity map
     typedef std::map<uint64_t, double> WidgetReuseEntryQValueMap;
 
     class WidgetReusableAgent : public ModelReusableAgent {
@@ -33,12 +32,6 @@ namespace fastbotx {
         double getStateActionExpectationValue(const WidgetPtr &widget,
                                                   const stringPtrSet &visitedActivities) const;
     private:
-        // 查找最相似的小部件签名
-        WidgetSignaturePtr findSimilarWidgetSignature(
-            const WidgetSignatureCountMap& widgetMap, 
-            const WidgetSignaturePtr& widgetSignature,
-            double threshold = 0.8) const;
-        
         // 可以添加新的成员变量或方法
         WidgetReuseEntryIntMap _widgetReuseModel;
         WidgetReuseEntryQValueMap _widgetReuseQValue;
@@ -46,7 +39,8 @@ namespace fastbotx {
         std::string _widgetDefaultModelSavePath;
         static std::string DefaultWidgetModelSavePath; // if the saved path is not specified, use this as the default.
         std::mutex _widgetReuseModelLock;
-    };
+        
+};
 
 } // namespace fastbotx
 
