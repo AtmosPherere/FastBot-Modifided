@@ -205,6 +205,13 @@ namespace fastbotx {
     bool Widget::hasIcon() const {
         return _icon != nullptr && !_icon->isEmpty();
     }
+
+    std::string Widget::getIconBase64() const {
+        if (_icon != nullptr) {
+            return _icon->getBase64String();
+        }
+        return "";
+    }
 }
 
 #endif //Widget_CPP_

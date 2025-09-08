@@ -1,10 +1,21 @@
 namespace fastbotx;
 
-// widget_hash -> count
+// widget的相似度属性（用于跨端匹配）
+table WidgetSimilarityAttributes
+{
+    text:string;                    // widget文本
+    activity_name:string;           // Activity名称
+    resource_id:string;             // 资源ID
+    icon_base64:string;             // 图标数据（base64字符串格式）
+}
+
+// widget_hash -> count (扩展版本，包含相似度属性)
 table WidgetCount
 {
     widget_hash:ulong;
     count:int;
+    // 用于跨端匹配的widget属性（可选，只在需要跨端复用时保存）
+    similarity_attrs:WidgetSimilarityAttributes;
 }
 
 // activity -> {widget_hash -> count}
@@ -14,17 +25,30 @@ table ActivityWidgetMap
     widgets:[WidgetCount];
 }
 
-// action_hash -> {activity -> {widget_hash -> count}}
+// action的相似度属性（用于跨端匹配）
+table ActionSimilarityAttributes
+{
+    action_type:int;                // 动作类型
+    activity_name:string;           // Activity名称
+    target_widget:WidgetSimilarityAttributes; // 目标widget的属性
+}
+
+// action_hash -> {activity -> {widget_hash -> count}} (扩展版本)
 table ReuseEntry
 {
     action:ulong (key);
     activities:[ActivityWidgetMap];
+    // 用于跨端匹配的action属性（可选，只在需要跨端复用时保存）
+    similarity_attrs:ActionSimilarityAttributes;
 }
 
 // 整个模型
 table WidgetReuseModel
 {
     model:[ReuseEntry];
+    // 模型元信息
+    platform_info:string;          // 平台信息
+    save_similarity_attrs:bool;     // 是否保存了相似度属性
 }
 
 root_type WidgetReuseModel;

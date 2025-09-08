@@ -8,11 +8,17 @@
 
 namespace fastbotx {
 
+struct WidgetSimilarityAttributes;
+struct WidgetSimilarityAttributesBuilder;
+
 struct WidgetCount;
 struct WidgetCountBuilder;
 
 struct ActivityWidgetMap;
 struct ActivityWidgetMapBuilder;
+
+struct ActionSimilarityAttributes;
+struct ActionSimilarityAttributesBuilder;
 
 struct ReuseEntry;
 struct ReuseEntryBuilder;
@@ -24,7 +30,8 @@ struct WidgetCount FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef WidgetCountBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_WIDGET_HASH = 4,
-    VT_COUNT = 6
+    VT_COUNT = 6,
+    VT_SIMILARITY_ATTRS = 8
   };
   uint64_t widget_hash() const {
     return GetField<uint64_t>(VT_WIDGET_HASH, 0);
@@ -32,10 +39,15 @@ struct WidgetCount FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   int32_t count() const {
     return GetField<int32_t>(VT_COUNT, 0);
   }
+  const WidgetSimilarityAttributes *similarity_attrs() const {
+    return GetPointer<const WidgetSimilarityAttributes *>(VT_SIMILARITY_ATTRS);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_WIDGET_HASH) &&
            VerifyField<int32_t>(verifier, VT_COUNT) &&
+           VerifyOffset(verifier, VT_SIMILARITY_ATTRS) &&
+           verifier.VerifyTable(similarity_attrs()) &&
            verifier.EndTable();
   }
 };
@@ -49,6 +61,9 @@ struct WidgetCountBuilder {
   }
   void add_count(int32_t count) {
     fbb_.AddElement<int32_t>(WidgetCount::VT_COUNT, count, 0);
+  }
+  void add_similarity_attrs(flatbuffers::Offset<WidgetSimilarityAttributes> similarity_attrs) {
+    fbb_.AddOffset(WidgetCount::VT_SIMILARITY_ATTRS, similarity_attrs);
   }
   explicit WidgetCountBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -64,10 +79,12 @@ struct WidgetCountBuilder {
 inline flatbuffers::Offset<WidgetCount> CreateWidgetCount(
     flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t widget_hash = 0,
-    int32_t count = 0) {
+    int32_t count = 0,
+    flatbuffers::Offset<WidgetSimilarityAttributes> similarity_attrs = 0) {
   WidgetCountBuilder builder_(_fbb);
-  builder_.add_widget_hash(widget_hash);
+  builder_.add_similarity_attrs(similarity_attrs);
   builder_.add_count(count);
+  builder_.add_widget_hash(widget_hash);
   return builder_.Finish();
 }
 
@@ -141,7 +158,8 @@ struct ReuseEntry FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ReuseEntryBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_ACTION = 4,
-    VT_ACTIVITIES = 6
+    VT_ACTIVITIES = 6,
+    VT_SIMILARITY_ATTRS = 8
   };
   uint64_t action() const {
     return GetField<uint64_t>(VT_ACTION, 0);
@@ -155,12 +173,17 @@ struct ReuseEntry FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<fastbotx::ActivityWidgetMap>> *activities() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<fastbotx::ActivityWidgetMap>> *>(VT_ACTIVITIES);
   }
+  const ActionSimilarityAttributes *similarity_attrs() const {
+    return GetPointer<const ActionSimilarityAttributes *>(VT_SIMILARITY_ATTRS);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_ACTION) &&
            VerifyOffset(verifier, VT_ACTIVITIES) &&
            verifier.VerifyVector(activities()) &&
            verifier.VerifyVectorOfTables(activities()) &&
+           VerifyOffset(verifier, VT_SIMILARITY_ATTRS) &&
+           verifier.VerifyTable(similarity_attrs()) &&
            verifier.EndTable();
   }
 };
@@ -174,6 +197,9 @@ struct ReuseEntryBuilder {
   }
   void add_activities(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<fastbotx::ActivityWidgetMap>>> activities) {
     fbb_.AddOffset(ReuseEntry::VT_ACTIVITIES, activities);
+  }
+  void add_similarity_attrs(flatbuffers::Offset<ActionSimilarityAttributes> similarity_attrs) {
+    fbb_.AddOffset(ReuseEntry::VT_SIMILARITY_ATTRS, similarity_attrs);
   }
   explicit ReuseEntryBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -189,10 +215,12 @@ struct ReuseEntryBuilder {
 inline flatbuffers::Offset<ReuseEntry> CreateReuseEntry(
     flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t action = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<fastbotx::ActivityWidgetMap>>> activities = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<fastbotx::ActivityWidgetMap>>> activities = 0,
+    flatbuffers::Offset<ActionSimilarityAttributes> similarity_attrs = 0) {
   ReuseEntryBuilder builder_(_fbb);
-  builder_.add_action(action);
+  builder_.add_similarity_attrs(similarity_attrs);
   builder_.add_activities(activities);
+  builder_.add_action(action);
   return builder_.Finish();
 }
 
@@ -210,16 +238,27 @@ inline flatbuffers::Offset<ReuseEntry> CreateReuseEntryDirect(
 struct WidgetReuseModel FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef WidgetReuseModelBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_MODEL = 4
+    VT_MODEL = 4,
+    VT_PLATFORM_INFO = 6,
+    VT_SAVE_SIMILARITY_ATTRS = 8
   };
   const flatbuffers::Vector<flatbuffers::Offset<fastbotx::ReuseEntry>> *model() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<fastbotx::ReuseEntry>> *>(VT_MODEL);
+  }
+  const flatbuffers::String *platform_info() const {
+    return GetPointer<const flatbuffers::String *>(VT_PLATFORM_INFO);
+  }
+  bool save_similarity_attrs() const {
+    return GetField<uint8_t>(VT_SAVE_SIMILARITY_ATTRS, 0) != 0;
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_MODEL) &&
            verifier.VerifyVector(model()) &&
            verifier.VerifyVectorOfTables(model()) &&
+           VerifyOffset(verifier, VT_PLATFORM_INFO) &&
+           verifier.VerifyString(platform_info()) &&
+           VerifyField<uint8_t>(verifier, VT_SAVE_SIMILARITY_ATTRS) &&
            verifier.EndTable();
   }
 };
@@ -230,6 +269,12 @@ struct WidgetReuseModelBuilder {
   flatbuffers::uoffset_t start_;
   void add_model(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<fastbotx::ReuseEntry>>> model) {
     fbb_.AddOffset(WidgetReuseModel::VT_MODEL, model);
+  }
+  void add_platform_info(flatbuffers::Offset<flatbuffers::String> platform_info) {
+    fbb_.AddOffset(WidgetReuseModel::VT_PLATFORM_INFO, platform_info);
+  }
+  void add_save_similarity_attrs(bool save_similarity_attrs) {
+    fbb_.AddElement<uint8_t>(WidgetReuseModel::VT_SAVE_SIMILARITY_ATTRS, static_cast<uint8_t>(save_similarity_attrs), 0);
   }
   explicit WidgetReuseModelBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -244,9 +289,13 @@ struct WidgetReuseModelBuilder {
 
 inline flatbuffers::Offset<WidgetReuseModel> CreateWidgetReuseModel(
     flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<fastbotx::ReuseEntry>>> model = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<fastbotx::ReuseEntry>>> model = 0,
+    flatbuffers::Offset<flatbuffers::String> platform_info = 0,
+    bool save_similarity_attrs = false) {
   WidgetReuseModelBuilder builder_(_fbb);
   builder_.add_model(model);
+  builder_.add_platform_info(platform_info);
+  builder_.add_save_similarity_attrs(save_similarity_attrs);
   return builder_.Finish();
 }
 
@@ -282,6 +331,149 @@ inline void FinishWidgetReuseModelBuffer(
     flatbuffers::Offset<fastbotx::WidgetReuseModel> root) {
   fbb.Finish(root);
 }
+
+// WidgetSimilarityAttributes structure
+struct WidgetSimilarityAttributes FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef WidgetSimilarityAttributesBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_TEXT = 4,
+    VT_ACTIVITY_NAME = 6,
+    VT_RESOURCE_ID = 8,
+    VT_ICON_BASE64 = 10
+  };
+  const flatbuffers::String *text() const {
+    return GetPointer<const flatbuffers::String *>(VT_TEXT);
+  }
+  const flatbuffers::String *activity_name() const {
+    return GetPointer<const flatbuffers::String *>(VT_ACTIVITY_NAME);
+  }
+  const flatbuffers::String *resource_id() const {
+    return GetPointer<const flatbuffers::String *>(VT_RESOURCE_ID);
+  }
+  const flatbuffers::String *icon_base64() const {
+    return GetPointer<const flatbuffers::String *>(VT_ICON_BASE64);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_TEXT) &&
+           verifier.VerifyString(text()) &&
+           VerifyOffset(verifier, VT_ACTIVITY_NAME) &&
+           verifier.VerifyString(activity_name()) &&
+           VerifyOffset(verifier, VT_RESOURCE_ID) &&
+           verifier.VerifyString(resource_id()) &&
+           VerifyOffset(verifier, VT_ICON_BASE64) &&
+           verifier.VerifyString(icon_base64()) &&
+           verifier.EndTable();
+  }
+};
+
+struct WidgetSimilarityAttributesBuilder {
+  typedef WidgetSimilarityAttributes Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_text(flatbuffers::Offset<flatbuffers::String> text) {
+    fbb_.AddOffset(WidgetSimilarityAttributes::VT_TEXT, text);
+  }
+  void add_activity_name(flatbuffers::Offset<flatbuffers::String> activity_name) {
+    fbb_.AddOffset(WidgetSimilarityAttributes::VT_ACTIVITY_NAME, activity_name);
+  }
+  void add_resource_id(flatbuffers::Offset<flatbuffers::String> resource_id) {
+    fbb_.AddOffset(WidgetSimilarityAttributes::VT_RESOURCE_ID, resource_id);
+  }
+  void add_icon_base64(flatbuffers::Offset<flatbuffers::String> icon_base64) {
+    fbb_.AddOffset(WidgetSimilarityAttributes::VT_ICON_BASE64, icon_base64);
+  }
+  explicit WidgetSimilarityAttributesBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<WidgetSimilarityAttributes> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<WidgetSimilarityAttributes>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<WidgetSimilarityAttributes> CreateWidgetSimilarityAttributes(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::String> text = 0,
+    flatbuffers::Offset<flatbuffers::String> activity_name = 0,
+    flatbuffers::Offset<flatbuffers::String> resource_id = 0,
+    flatbuffers::Offset<flatbuffers::String> icon_base64 = 0) {
+  WidgetSimilarityAttributesBuilder builder_(_fbb);
+  builder_.add_icon_base64(icon_base64);
+  builder_.add_resource_id(resource_id);
+  builder_.add_activity_name(activity_name);
+  builder_.add_text(text);
+  return builder_.Finish();
+}
+
+// ActionSimilarityAttributes structure
+struct ActionSimilarityAttributes FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ActionSimilarityAttributesBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_ACTION_TYPE = 4,
+    VT_ACTIVITY_NAME = 6,
+    VT_TARGET_WIDGET = 8
+  };
+  int32_t action_type() const {
+    return GetField<int32_t>(VT_ACTION_TYPE, 0);
+  }
+  const flatbuffers::String *activity_name() const {
+    return GetPointer<const flatbuffers::String *>(VT_ACTIVITY_NAME);
+  }
+  const WidgetSimilarityAttributes *target_widget() const {
+    return GetPointer<const WidgetSimilarityAttributes *>(VT_TARGET_WIDGET);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_ACTION_TYPE) &&
+           VerifyOffset(verifier, VT_ACTIVITY_NAME) &&
+           verifier.VerifyString(activity_name()) &&
+           VerifyOffset(verifier, VT_TARGET_WIDGET) &&
+           verifier.VerifyTable(target_widget()) &&
+           verifier.EndTable();
+  }
+};
+
+struct ActionSimilarityAttributesBuilder {
+  typedef ActionSimilarityAttributes Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_action_type(int32_t action_type) {
+    fbb_.AddElement<int32_t>(ActionSimilarityAttributes::VT_ACTION_TYPE, action_type, 0);
+  }
+  void add_activity_name(flatbuffers::Offset<flatbuffers::String> activity_name) {
+    fbb_.AddOffset(ActionSimilarityAttributes::VT_ACTIVITY_NAME, activity_name);
+  }
+  void add_target_widget(flatbuffers::Offset<WidgetSimilarityAttributes> target_widget) {
+    fbb_.AddOffset(ActionSimilarityAttributes::VT_TARGET_WIDGET, target_widget);
+  }
+  explicit ActionSimilarityAttributesBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<ActionSimilarityAttributes> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ActionSimilarityAttributes>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ActionSimilarityAttributes> CreateActionSimilarityAttributes(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t action_type = 0,
+    flatbuffers::Offset<flatbuffers::String> activity_name = 0,
+    flatbuffers::Offset<WidgetSimilarityAttributes> target_widget = 0) {
+  ActionSimilarityAttributesBuilder builder_(_fbb);
+  builder_.add_target_widget(target_widget);
+  builder_.add_activity_name(activity_name);
+  builder_.add_action_type(action_type);
+  return builder_.Finish();
+}
+
+
+
 
 inline void FinishSizePrefixedWidgetReuseModelBuffer(
     flatbuffers::FlatBufferBuilder &fbb,

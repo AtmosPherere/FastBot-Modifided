@@ -63,9 +63,9 @@ public class APIAdapter {
             method = clazz.getMethod(name, types);
             method.setAccessible(true);
         } catch (NoSuchMethodException e) {
-            Logger.errorPrintln("findMethod() error, NoSuchMethodException happened, there is no such method: "+name);
+            // 不打印错误信息，静默返回null
         } catch (java.lang.NoSuchMethodError e) {
-            Logger.errorPrintln("findMethod() error, NoSuchMethodError happened,, there is no such method: "+name);
+            // 不打印错误信息，静默返回null
         } catch (SecurityException e) {
             e.printStackTrace();
             System.exit(1);
@@ -205,8 +205,38 @@ public class APIAdapter {
             invoke(method, mAm, controller, true);
             return;
         }
-        Logger.println("Cannot resolve method: " + name);
-        System.exit(1);
+        // 尝试找到接受不同参数的同名方法
+        method = findMethod(clazz, name, IBinder.class);
+        if (method != null) {
+            invoke(method, mAm, controller != null ? ((android.app.IActivityController)controller).asBinder() : null);
+            return;
+        }
+        method = findMethod(clazz, name, IBinder.class, boolean.class);
+        if (method != null) {
+            invoke(method, mAm, controller != null ? ((android.app.IActivityController)controller).asBinder() : null, true);
+            return;
+        }
+        
+        // 尝试寻找类似功能的替代方法
+        String[] alternateMethods = {"setActivityMonitor", "setActivityWatcher", "setMonitor"};
+        for (String altMethod : alternateMethods) {
+            method = findMethod(clazz, altMethod, android.app.IActivityController.class);
+            if (method != null) {
+                Logger.println("Using alternative method: " + altMethod + " instead of " + name);
+                invoke(method, mAm, controller);
+                return;
+            }
+            method = findMethod(clazz, altMethod, android.app.IActivityController.class, boolean.class);
+            if (method != null) {
+                Logger.println("Using alternative method: " + altMethod + " instead of " + name);
+                invoke(method, mAm, controller, true);
+                return;
+            }
+        }
+        
+        // 如果所有尝试都失败，打印警告并继续执行，而不是退出程序
+        Logger.println("Warning: Cannot resolve method: " + name + ", continuing without activity controller");
+        // 不再调用System.exit(1)，避免程序崩溃退出
     }
 
     public static void broadcastIntent(IActivityManager mAm, Intent paramIntent) {

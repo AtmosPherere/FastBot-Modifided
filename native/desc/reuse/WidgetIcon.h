@@ -26,13 +26,17 @@ public:
 
     // 获取图标
     cv::Mat getIcon() const;
-    
+
     // 检查图标是否为空
     bool isEmpty() const;
+
+    // 获取原始的base64字符串
+    std::string getBase64String() const;
 
 private:
     cv::Mat _icon;
     bool _isValid;
+    std::string _base64String;  // 保存原始的base64字符串
     
     // 从Base64解码为图像
     static cv::Mat base64ToMat(const std::string& base64String);

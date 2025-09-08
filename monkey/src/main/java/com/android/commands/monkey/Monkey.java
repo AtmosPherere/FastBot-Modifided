@@ -53,6 +53,7 @@ import com.android.commands.monkey.source.MonkeySourceApeNative;
 import com.android.commands.monkey.source.MonkeySourceRandom;
 import com.android.commands.monkey.source.MonkeySourceRandomScript;
 import com.android.commands.monkey.source.MonkeySourceScript;
+import com.bytedance.fastbot.AiClient;
 import com.android.commands.monkey.utils.Config;
 import com.android.commands.monkey.utils.Logger;
 import com.android.commands.monkey.utils.MonkeyUtils;
@@ -834,6 +835,12 @@ public class Monkey {
             // original orientation.
             Logger.println("// Monkey is over!");
             new MonkeyRotationEvent(Surface.ROTATION_0, false).injectEvent(mWm, mAm, mVerbose);
+
+            // 在测试完全结束时确保清理 native 资源
+            Logger.println("// Monkey finally block - ensuring native cleanup");
+            if (mUseApeNativeReuse) {
+                AiClient.cleanupAndSaveModel();
+            }
         }
 
         if (this.mEventSource instanceof MonkeySourceRandom) {
@@ -1280,7 +1287,15 @@ public class Monkey {
             Logger.errorPrintln("Error: Unable to connect to package manager; is the system " + "running?");
             return false;
         }
+        
+        try {
         APIAdapter.setActivityController(mAm, new ActivityController());
+        } catch (Exception e) {
+            Logger.errorPrintln("Warning: Unable to set activity controller. Some features may not work.");
+            Logger.errorPrintln(e.toString());
+            // 继续执行，不因此中断整个流程
+        }
+        
         return true;
     }
 

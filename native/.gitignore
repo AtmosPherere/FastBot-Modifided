@@ -12,6 +12,11 @@ local.properties
 # Log/OS Files
 *.log
 
+.DS_Store
+.gradle/
+.bfg-report/
+libs/*.so
+
 # Android Studio generated files and folders
 captures/
 .externalNativeBuild/

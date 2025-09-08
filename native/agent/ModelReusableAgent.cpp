@@ -23,13 +23,19 @@ namespace fastbotx {
 
     ModelReusableAgent::ModelReusableAgent(const ModelPtr &model)
             : AbstractAgent(model), _alpha(SarsaRLDefaultAlpha), _epsilon(SarsaRLDefaultEpsilon),
-              _modelSavePath(DefaultModelSavePath), _defaultModelSavePath(DefaultModelSavePath) {
+              _modelSavePath(""), _defaultModelSavePath("") {
         this->_algorithmType = AlgorithmType::Reuse;
     }
 
     ModelReusableAgent::~ModelReusableAgent() {
         BLOG("save model in destruct");
-        this->saveReuseModel(this->_modelSavePath);
+        // 确保使用正确的保存路径
+        if (!this->_modelSavePath.empty()) {
+            this->saveReuseModel(this->_modelSavePath);
+        } else {
+            // 如果路径为空，使用默认路径
+            this->saveReuseModel(this->_defaultModelSavePath);
+        }
         this->_reuseModel.clear();
     }
 
@@ -107,22 +113,41 @@ namespace fastbotx {
         double value = .0;
         int total = 0;
         int unvisited = 0;
+        uintptr_t actionHash = action->hash();
+
+        BLOG("Computing probability for action hash=%llu", actionHash);
+
         // find this action in this model according to its int hash
         // according to the given action, get the activities that this action could reach in reuse model.
-        auto actionMapIterator = this->_reuseModel.find(action->hash());//(*actionMapIterator).first is hash, second is ReuseEntryMap --by me,init in line 496
+        auto actionMapIterator = this->_reuseModel.find(actionHash);//(*actionMapIterator).first is hash, second is ReuseEntryMap --by me,init in line 496
         if (actionMapIterator != this->_reuseModel.end()) {
+            BLOG("Action %llu found in reuse model with %zu target activities",
+                 actionHash, (*actionMapIterator).second.size());
+
             // Iterate the map containing entry of activity name and visited count
             // to ascertain the unvisited activity count according to the pre-saved reuse model
             for (const auto &activityCountMapIterator: (*actionMapIterator).second) {
                 total += activityCountMapIterator.second;//当前action的总执行次数
                 stringPtr activity = activityCountMapIterator.first;
-                if (visitedActivities.find(activity) == visitedActivities.end()) {
+                bool isVisited = visitedActivities.find(activity) != visitedActivities.end();
+
+                BLOG("  Activity: %s, count: %d, visited: %s",
+                     activity->c_str(), activityCountMapIterator.second, isVisited ? "yes" : "no");
+
+                if (!isVisited) {
                     unvisited += activityCountMapIterator.second;//执行完action后遇到当前未访问过的activity次数
                 }
             }
+
+            BLOG("Action %llu: total=%d, unvisited=%d", actionHash, total, unvisited);
+
             if (total > 0 && unvisited > 0) {
                 value = static_cast<double>(unvisited) / total;
             }
+
+            BLOG("Final probability for action %llu: %f", actionHash, value);
+        } else {
+            BLOG("Action %llu NOT found in reuse model", actionHash);
         }
         return value;
     }
@@ -247,39 +272,52 @@ namespace fastbotx {
 
     ActionPtr ModelReusableAgent::selectNewAction() {
         ActionPtr action = nullptr;
+        BLOG("Starting selectNewAction process");
+        
+        BLOG("Trying selectUnperformedActionNotInReuseModel");
         action = this->selectUnperformedActionNotInReuseModel();
         if (nullptr != action) {
             BLOG("%s", "select action not in reuse model");
             return action;
         }
+        BLOG("No action found in selectUnperformedActionNotInReuseModel");
 
+        BLOG("Trying selectUnperformedActionInReuseModel");
         action = this->selectUnperformedActionInReuseModel();
         if (nullptr != action) {
             BLOG("%s", "select action in reuse model");
             return action;
         }
+        BLOG("No action found in selectUnperformedActionInReuseModel");
 
+        BLOG("Trying randomPickUnvisitedAction");
         action = this->_newState->randomPickUnvisitedAction();
         if (nullptr != action) {
             BLOG("%s", "select action in unvisited action");
             return action;
         }
+        BLOG("No action found in randomPickUnvisitedAction");
 
         // if all the actions are explored, use those two methods to generate new action based on q value.
         // there are two methods to choose from.
         // based on q value and a uniform distribution, select an action with the highest value.
+        BLOG("Trying selectActionByQValue");
         action = this->selectActionByQValue();
         if (nullptr != action) {
             BLOG("%s", "select action by qvalue");
             return action;
         }
+        BLOG("No action found in selectActionByQValue");
 
         // use the traditional epsilon greedy strategy to choose the next action.
+        BLOG("Trying selectNewActionEpsilonGreedyRandomly");
         action = this->selectNewActionEpsilonGreedyRandomly();
         if (nullptr != action) {
             BLOG("%s", "select action by EpsilonGreedyRandom");
             return action;
         }
+        BLOG("No action found in selectNewActionEpsilonGreedyRandomly");
+        
         BLOGE("null action happened , handle null action");
         return handleNullAction();
     }
@@ -332,25 +370,62 @@ namespace fastbotx {
         float maxValue = -MAXFLOAT;
         ActionPtr nextAction = nullptr;
         // use humble gumbel(http://amid.fish/humble-gumbel) to affect the sampling of actions from reuseModel
+        BLOG("Searching for unperformed actions in reuse model...");
+
+        // 首先检查重用模型是否为空
+        BLOG("Reuse model size: %zu", this->_reuseModel.size());
+        if (this->_reuseModel.empty()) {
+            BLOG("Reuse model is empty, cannot select action from reuse model");
+            return nullptr;
+        }
+
+        // 检查targetActions()返回的列表
+        auto targetActions = this->_newState->targetActions();
+        BLOG("Target actions count: %zu", targetActions.size());
+
+        if (targetActions.empty()) {
+            BLOG("No target actions available");
+            return nullptr;
+        }
+
+        // 检查有多少操作在重用模型中
+        int actionsInModel = 0;
+        for (const auto &action: targetActions) {
+            if (this->_reuseModel.find(action->hash()) != this->_reuseModel.end()) {
+                actionsInModel++;
+                BLOG("Action hash=%llu found in reuse model", action->hash());
+            } else {
+                BLOG("Action hash=%llu NOT found in reuse model", action->hash());
+            }
+        }
+        BLOG("Actions in reuse model: %d out of %zu target actions", actionsInModel, targetActions.size());
+        
         for (const auto &action: this->_newState->targetActions())  // except BACK/FEED/EVENT_SHELL actions. Only actions from  ActionType::CLICK to ActionType::SCROLL_BOTTOM_UP_N are allowed
         {
             uintptr_t actionHash = action->hash();
+            BLOG("Processing action hash=%llu, type=%s, visitedCount=%d",
+                 actionHash, actName[action->getActionType()].c_str(), action->getVisitedCount());
+
             if (this->_reuseModel.find(actionHash) !=
                 this->_reuseModel.end()) // found this action in reuse model
             {
+                BLOG("Found action %llu in reuse model", actionHash);
                 if (action->getVisitedCount() >
                     0) // In this state, this action has just been performed in this round.
                 {
-                    BDLOG("%s", "action has been visited");
+                    BLOG("Action %llu has been visited %d times, skipping", actionHash, action->getVisitedCount());
                     continue;
                 }
                 auto modelPointer = this->_model.lock();
                 if (modelPointer) {
                     const GraphPtr &graphRef = modelPointer->getGraph();
                     auto visitedActivities = graphRef->getVisitedActivities();
+                    BLOG("Calculating probability for action hash=%llu, visited activities count: %zu",
+                         actionHash, visitedActivities.size());
                     auto qualityValue = static_cast<float>(this->probabilityOfVisitingNewActivities(
                             action,
                             visitedActivities));
+                    BLOG("Calculated probability for action hash=%llu: %f", actionHash, qualityValue);
                     if (qualityValue >
                         1e-4) // quality value of candidate action should be larger than 0
                     {
@@ -363,15 +438,29 @@ namespace fastbotx {
                             uniform = std::numeric_limits<float>::min();
                         // add this random factor to quality value
                         qualityValue -= log(-log(uniform));
+                        BLOG("After random factor, quality value for action hash=%llu: %f", actionHash, qualityValue);
 
                         // choose the action with the maximum quality value
                         if (qualityValue > maxValue) {
                             maxValue = qualityValue;
                             nextAction = action;
+                            BLOG("New best action hash=%llu with quality value %f", actionHash, qualityValue);
                         }
                     }
+                    else {
+                        BLOG("Action %llu quality too low: %f (threshold: 1e-4)", actionHash, qualityValue);
+                    }
+                } else {
+                    BLOG("Model pointer is null for action %llu", actionHash);
                 }
+            } else {
+                BLOG("Action %llu NOT found in reuse model", actionHash);
             }
+        }
+        if (nextAction != nullptr) {
+            BLOG("Selected action hash=%llu with max quality value %f", nextAction->hash(), maxValue);
+        } else {
+            BLOG("No action selected from reuse model (maxValue=%f)", maxValue);
         }
         return nextAction;
     }
@@ -423,11 +512,17 @@ namespace fastbotx {
     }
 
     void ModelReusableAgent::threadModelStorage(const std::weak_ptr<ModelReusableAgent> &agent) {
-        int saveInterval = 1000 * 60 * 10; // save model per 10 min
+        int saveInterval = 1000 * 60 * 2; // save model per 2 min (更频繁的保存)
         while (!agent.expired()) {
-            agent.lock()->saveReuseModel(agent.lock()->_modelSavePath);
+            auto lockedAgent = agent.lock();
+            if (lockedAgent) {
+                BLOG("Background thread saving model...");
+                lockedAgent->saveReuseModel(lockedAgent->_modelSavePath);
+                BLOG("Background thread model saved");
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(saveInterval));
         }
+        BLOG("Background save thread exiting");
     }
 
 #ifdef __ANDROID__
@@ -441,17 +536,19 @@ namespace fastbotx {
     /// by FlatBuffers
     /// \param packageName The package name of the tested application
     void ModelReusableAgent::loadReuseModel(const std::string &packageName) {//->变为加载多个模型文件
-        std::string modelFilePath = STORAGE_PREFIX + packageName + ".fbm";
+        std::string modelFilePath = std::string(STORAGE_PREFIX) + packageName + ".fbm";
 
         this->_modelSavePath = modelFilePath;
         if (!this->_modelSavePath.empty()) {
-            this->_defaultModelSavePath = STORAGE_PREFIX + packageName + ".tmp.fbm";
+            // 使用相同的后缀，避免保存和加载路径不一致
+            this->_defaultModelSavePath = std::string(STORAGE_PREFIX) + packageName + ".fbm";
         }
         BLOG("begin load model: %s", this->_modelSavePath.c_str());
 
         std::ifstream modelFile(modelFilePath, std::ios::binary | std::ios::in);
         if (modelFile.fail()) {
             BLOG("read model file %s failed, check if file exists!", modelFilePath.c_str());
+            BLOG("Current _reuseModel will remain empty (size: %zu)", this->_reuseModel.size());
             return;
         }
 
@@ -497,10 +594,24 @@ namespace fastbotx {
             }
         }
         BLOG("loaded model contains actions: %zu", this->_reuseModel.size());
+
+        // 打印加载的模型内容摘要
+        if (this->_reuseModel.size() > 0) {
+            BLOG("Sample of loaded reuse model:");
+            int count = 0;
+            for (const auto &entry : this->_reuseModel) {
+                if (count >= 5) break; // 只打印前5个条目
+                BLOG("  Action hash=%llu has %zu target activities", entry.first, entry.second.size());
+                count++;
+            }
+        } else {
+            BLOG("WARNING: Reuse model is empty after loading!");
+        }
+
         delete[] modelFileData;
     }
 
-    std::string ModelReusableAgent::DefaultModelSavePath = "/sdcard/fastbot.model.fbm";
+    std::string ModelReusableAgent::DefaultModelSavePath = "";
 
     /// With the FlatBuffer library, serialize the ReuseModel according to ReuseModel.fbs,
     /// and save the data to modelFilePath.
@@ -549,7 +660,7 @@ namespace fastbotx {
         if (outputFilePath.empty()) // if the passed argument modelFilepath is "", use the tmpSavePath
             outputFilePath = this->_defaultModelSavePath;
         BLOG("save model to path: %s", outputFilePath.c_str());
-        std::ofstream outputFile(outputFilePath);
+        std::ofstream outputFile(outputFilePath, std::ios::binary);
         outputFile.write((char *) builder.GetBufferPointer(), static_cast<int>(builder.GetSize()));
         outputFile.close();
     }
@@ -602,7 +713,7 @@ namespace fastbotx {
         if (outputFilePath.empty()) // if the passed argument modelFilepath is "", use the tmpSavePath
             outputFilePath = this->_defaultModelSavePath;
         BLOG("save model to path: %s", outputFilePath.c_str());
-        std::ofstream outputFile(outputFilePath);
+        std::ofstream outputFile(outputFilePath, std::ios::binary);
         outputFile.write((char *) builder.GetBufferPointer(), static_cast<int>(builder.GetSize()));
         outputFile.close();
     }

@@ -23,12 +23,12 @@ namespace fastbotx {
     ActivityNameAction::ActivityNameAction(stringPtr activity, const WidgetPtr &widget,
                                            ActionType act)
             : ActivityStateAction(nullptr, widget, act), _activity(std::move(activity)) {
-        uintptr_t activityHashCode = std::hash<std::string>{}(*(_activity.get()));
+        // 移除activity name，只使用action type和widget hash计算
         uintptr_t actionHashCode = std::hash<int>{}(this->getActionType());
         uintptr_t targetHash = nullptr != widget ? widget->hash() : 0x1;
 
-        this->_hashcode = 0x9e3779b9 + (activityHashCode << 2) ^
-                          (((actionHashCode << 6) ^ (targetHash << 1)) << 1);
+        // 简化hash计算，不包含activity信息
+        this->_hashcode = 0x9e3779b9 + (actionHashCode << 6) ^ (targetHash << 1);
     }
 
     ActivityNameAction::~ActivityNameAction()

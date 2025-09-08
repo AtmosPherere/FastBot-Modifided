@@ -25,11 +25,14 @@ namespace fastbotx {
     AbstractAgentPtr
     AgentFactory::create(AlgorithmType agentT, const ModelPtr &model, DeviceType deviceType) {
         AbstractAgentPtr agent = nullptr;
-        // use ModelReusableAgent under all circumstances.
-        //ReuseAgentPtr reuseAgent = std::make_shared<ModelReusableAgent>(model);
+        // use WidgetReusableAgent under all circumstances.
         ReuseAgentPtr reuseAgent = std::make_shared<WidgetReusableAgent>(model);
+
+        // 使用原来的后台保存线程，现在路径问题已经修复
+        // 虚函数调用会正确调用到 WidgetReusableAgent::saveReuseModel
         threadDelayExec(3000, false, &ModelReusableAgent::threadModelStorage,
                         std::weak_ptr<fastbotx::ModelReusableAgent>(reuseAgent));
+
         agent = reuseAgent;
         return agent;
     }

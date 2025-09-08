@@ -144,6 +144,16 @@ public class AiClient {
 
     public static native String getNativeVersion();
 
+    // 添加清理方法的 native 声明
+    private native void cleanup();
+
+    // 公共方法用于清理资源和保存模型数据
+    public static void cleanupAndSaveModel() {
+        Logger.println("// Cleaning up native resources and saving model data...");
+        singleton.cleanup();
+        Logger.println("// Native cleanup completed");
+    }
+
     public static boolean checkPointIsShield(String activity, PointF point)
     {
         return singleton.nkksdhdk(activity, point.x, point.y);

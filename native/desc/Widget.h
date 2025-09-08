@@ -35,8 +35,6 @@ namespace fastbotx {
         std::string getText() const { return this->_text; }
 
         std::string getResourceID() const { return this->_resourceID; }
-        
-        std::string getClazz() const { return this->_clazz; }
 
         bool getEnabled() const { return this->_enabled; }
 
@@ -54,8 +52,11 @@ namespace fastbotx {
         void setIcon(const std::string& base64Icon);
 
         WidgetIconPtr getIcon() const;
-        
+
         bool hasIcon() const;
+
+        // 获取base64格式的icon字符串
+        std::string getIconBase64() const;
 
         virtual void clearDetails();
 

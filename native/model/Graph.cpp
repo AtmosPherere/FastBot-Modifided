@@ -118,23 +118,23 @@ namespace fastbotx {
               this->_visitedActions.size());
     }
 
-    ActivityNameActionPtr Graph::findSimilarAction(const ActivityNameActionPtr& action, double threshold) const {
-        if (!action) return nullptr;
+    // ActivityNameActionPtr Graph::findSimilarAction(const ActivityNameActionPtr& action, double threshold) const {
+    //     if (!action) return nullptr;
         
-        for (const auto& visitedAction : this->_visitedActions) {
-            // 将visitedAction转换为ActivityNameAction类型进行比较
-            auto activityNameAction = std::dynamic_pointer_cast<ActivityNameAction>(visitedAction);
-            if (activityNameAction && ActionSimilarity::isSimilar(action, activityNameAction, threshold)) {
-                return activityNameAction;
-            }
-        }
+    //     for (const auto& visitedAction : this->_visitedActions) {
+    //         // 将visitedAction转换为ActivityNameAction类型进行比较
+    //         auto activityNameAction = std::dynamic_pointer_cast<ActivityNameAction>(visitedAction);
+    //         if (activityNameAction && ActionSimilarity::isSimilar(action, activityNameAction, threshold)) {
+    //             return activityNameAction;
+    //         }
+    //     }
         
-        return nullptr;
-    }
+    //     return nullptr;
+    // }
     
-    bool Graph::hasSimilarAction(const ActivityNameActionPtr& action, double threshold) const {
-        return findSimilarAction(action, threshold) != nullptr;
-    }
+    // bool Graph::hasSimilarAction(const ActivityNameActionPtr& action, double threshold) const {
+    //     return findSimilarAction(action, threshold) != nullptr;
+    // }
 
     Graph::~Graph() {
         this->_states.clear();

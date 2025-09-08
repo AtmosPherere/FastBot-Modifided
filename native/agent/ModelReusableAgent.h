@@ -61,12 +61,12 @@ namespace fastbotx {
 
         void adjustActions() override;
 
-        ActionPtr selectUnperformedActionNotInReuseModel() const;
+        virtual ActionPtr selectUnperformedActionNotInReuseModel() const;
 
         /// Choose an unused(unvisited) action with quality value greater than zero
         /// under the influence of humble-gumbel distribution,
         /// \return The chosen action
-        ActionPtr selectUnperformedActionInReuseModel() const;
+        virtual ActionPtr selectUnperformedActionInReuseModel() const;
 
         ActionPtr selectActionByQValue();
 
@@ -81,7 +81,7 @@ namespace fastbotx {
         std::vector<double> _rewardCache;
         std::vector<ActionPtr> _previousActions;
 
-    private:
+    protected:  // 改为 protected 以便子类访问
         // A map containing entry of hash code of Action and map, which containing entry of name of activity that this
         // action goes to and the count of this very activity being visited.
         ReuseEntryIntMap _reuseModel;

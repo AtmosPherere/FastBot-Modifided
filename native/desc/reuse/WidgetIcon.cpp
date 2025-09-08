@@ -34,6 +34,10 @@ bool WidgetIcon::loadFromBase64(const std::string& base64Icon) {
     try {
         BLOG("开始加载Base64图标数据，长度: %zu", base64Icon.length());
         //BLOG("Base64字符串内容: %s", base64Icon.c_str());
+
+        // 保存原始base64字符串
+        _base64String = base64Icon;
+
         _icon = base64ToMat(base64Icon);
         _isValid = !_icon.empty();
         if (_isValid) {
@@ -163,6 +167,10 @@ std::vector<uchar> WidgetIcon::decodeBase64(const std::string& base64String) {
 
     // 将 string 转换为 vector<unsigned char>
     return std::vector<uchar>(decodedStr.begin(), decodedStr.end());
+}
+
+std::string WidgetIcon::getBase64String() const {
+    return _base64String;
 }
 
 } // namespace fastbotx

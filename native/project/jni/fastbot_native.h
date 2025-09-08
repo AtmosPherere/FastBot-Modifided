@@ -33,6 +33,10 @@ Java_com_bytedance_fastbot_AiClient_nkksdhdk(JNIEnv *env, jobject, jstring activ
 JNIEXPORT jstring JNICALL
 Java_com_bytedance_fastbot_AiClient_getNativeVersion(JNIEnv *env, jclass clazz);
 
+// cleanup method to explicitly destroy model and save data
+JNIEXPORT void JNICALL
+Java_com_bytedance_fastbot_AiClient_cleanup(JNIEnv *env, jobject);
+
 #ifdef __cplusplus
 }
 #endif

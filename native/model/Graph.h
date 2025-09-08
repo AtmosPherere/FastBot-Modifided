@@ -67,10 +67,10 @@ namespace fastbotx {
 
 
         // 查找与给定action相似的已访问action
-        ActivityNameActionPtr findSimilarAction(const ActivityNameActionPtr& action, double threshold = 0.8) const;
+        //ActivityNameActionPtr findSimilarAction(const ActivityNameActionPtr& action, double threshold = 0.8) const;
 
         // 检查action是否与已访问的任何action相似
-        bool hasSimilarAction(const ActivityNameActionPtr& action, double threshold = 0.8) const;
+        //bool hasSimilarAction(const ActivityNameActionPtr& action, double threshold = 0.8) const;
 
         virtual ~Graph();
 

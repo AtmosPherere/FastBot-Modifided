@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp> // JSON parsing library
 #include "Model.h"
 #include "ModelReusableAgent.h"
+#include "WidgetReusableAgent.h"
 #include "utils.hpp"
 
 #ifdef __cplusplus
@@ -87,8 +88,15 @@ void JNICALL Java_com_bytedance_fastbot_AiClient_fgdsaf5d(JNIEnv *env, jobject, 
 
     BLOG("init agent with type %d, %s,  %d", agentType, packageNameCString, deviceType);
     if (algorithmType == fastbotx::AlgorithmType::Reuse) {
-        auto reuseAgentPtr = std::dynamic_pointer_cast<fastbotx::ModelReusableAgent>(agentPointer);
-        reuseAgentPtr->loadReuseModel(std::string(packageNameCString));
+        // 所有的agent都应该是WidgetReusableAgent
+        auto widgetReuseAgentPtr = std::dynamic_pointer_cast<fastbotx::WidgetReusableAgent>(agentPointer);
+        if (widgetReuseAgentPtr) {
+            BLOG("Loading widget reuse model for WidgetReusableAgent");
+            widgetReuseAgentPtr->loadReuseModel(std::string(packageNameCString));
+        } else {
+            BLOGE("Failed to cast agent to WidgetReusableAgent!");
+        }
+
         if (env)
             env->ReleaseStringUTFChars(packageName, packageNameCString);
     }
@@ -130,6 +138,49 @@ Java_com_bytedance_fastbot_AiClient_nkksdhdk(JNIEnv *env, jobject, jstring activ
 
 jstring JNICALL Java_com_bytedance_fastbot_AiClient_getNativeVersion(JNIEnv *env, jclass clazz) {
     return env->NewStringUTF(FASTBOT_VERSION);
+}
+
+// 添加清理方法，用于显式销毁模型和保存数据
+void JNICALL Java_com_bytedance_fastbot_AiClient_cleanup(JNIEnv *env, jobject) {
+    BLOG("Cleanup called - destroying fastbot model and saving data");
+
+    if (_fastbot_model != nullptr) {
+        // 在销毁模型之前，强制保存模型数据
+        BLOG("Force saving model before destruction...");
+        // 使用空字符串作为设备ID（与初始化时一致）
+        auto agent = _fastbot_model->getAgent("");
+        if (agent != nullptr) {
+            // 尝试转换为 WidgetReusableAgent 并强制保存
+            auto widgetAgent = std::dynamic_pointer_cast<fastbotx::WidgetReusableAgent>(agent);
+            if (widgetAgent != nullptr) {
+                BLOG("Calling forceSaveReuseModel...");
+                widgetAgent->forceSaveReuseModel();
+                BLOG("Force save completed");
+            } else {
+                BLOG("Agent is not WidgetReusableAgent, using regular save");
+                auto reuseAgent = std::dynamic_pointer_cast<fastbotx::ModelReusableAgent>(agent);
+                if (reuseAgent != nullptr) {
+                    // 使用父类的保存方法
+                    reuseAgent->saveReuseModel("");
+                }
+            }
+        }
+
+        // 模型销毁时会自动调用所有 agent 的析构函数，从而保存模型数据
+        BLOG("Destroying fastbot model...");
+        _fastbot_model.reset();
+        _fastbot_model = nullptr;
+        BLOG("Fastbot model destroyed");
+    } else {
+        BLOG("Fastbot model is already null");
+    }
+
+    // 清理全局图标数据
+    {
+        std::lock_guard<std::mutex> lock(g_iconsMutex);
+        g_activityIconsMap.clear();
+        BLOG("Cleared global activity icons map");
+    }
 }
 
 #ifdef __cplusplus

@@ -1,0 +1,17 @@
+类型,名称,round1,round2,合并
+improved,test_results_20250718_212053,41,41,50
+improved,test_results_20250816_150125,39,40,50
+improved,test_results_20250817_193538,38,32,43
+improved,test_results_20250817_220939,32,33,44
+improved,test_results_20250818_224913,40,43,52
+improved,test_results_20250819_005359,46,40,52
+original,test_results_20250816_230536,41,49,54
+original,test_results_20250817_011722,39,41,50
+original,test_results_20250817_171329,47,44,53
+
+总体
+原版总活动数,70
+改进版总活动数,73
+共同活动数,54
+仅原版活动数,16
+仅改进版活动数,19

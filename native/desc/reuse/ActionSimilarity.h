@@ -22,10 +22,27 @@ public:
     ~ActionSimilarity();
 
     // 计算两个action的相似度
-    static double calculateSimilarity(const ActivityNameActionPtr& action1, const ActivityNameActionPtr& action2);
-    
+    // static double calculateSimilarity(const ActivityNameActionPtr& action1, const ActivityNameActionPtr& action2);
+
+    // 基于属性的相似度计算（支持序列化数据）
+    static double calculateSimilarity(
+        const std::string& text1, const std::string& activityName1, const std::string& resourceId1, const std::string& iconBase64_1,
+        const std::string& text2, const std::string& activityName2, const std::string& resourceId2, const std::string& iconBase64_2);
+
+
+
+    // 混合相似度计算：当前widget对象 vs 外部模型数据（用于外部模型匹配）
+    static double calculateSimilarity(const WidgetPtr& currentWidget, const std::string& currentActivityName,
+                                     const std::string& externalText, const std::string& externalActivityName,
+                                     const std::string& externalResourceId, const std::string& externalIconBase64);
+
+    // 混合相似度计算：当前action对象 vs 外部模型数据（用于外部模型匹配）
+    static double calculateSimilarity(const ActivityNameActionPtr& currentAction,
+                                     const std::string& externalText, const std::string& externalActivityName,
+                                     const std::string& externalResourceId, const std::string& externalIconBase64);
+
     // 判断两个action是否相似（相似度超过阈值）
-    static bool isSimilar(const ActivityNameActionPtr& action1, const ActivityNameActionPtr& action2, double threshold = 0.8);
+    // static bool isSimilar(const ActivityNameActionPtr& action1, const ActivityNameActionPtr& action2, double threshold = 0.8);
 
 private:
     // 计算文本相似度
@@ -39,6 +56,9 @@ private:
     
     // 计算图标相似度（使用CLIP模型）
     static double calculateIconSimilarity(const WidgetIconPtr& icon1, const WidgetIconPtr& icon2);
+
+    // 计算图标相似度（基于base64字符串，用于外部模型匹配）
+    static double calculateIconSimilarity(const std::string& iconBase64_1, const std::string& iconBase64_2);
 
     // BERT模型相关
     static Ort::Session* bertSession;
@@ -70,6 +90,9 @@ private:
     
     // 对文本进行分词
     static std::vector<std::string> tokenize(const std::string& text);
+    
+    // WordPiece分词辅助函数
+    static std::vector<std::string> wordPieceTokenize(const std::string& word);
     
     // 将token转换为ID
     static std::vector<int64_t> convertTokensToIds(const std::vector<std::string>& tokens);

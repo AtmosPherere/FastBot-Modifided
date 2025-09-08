@@ -317,6 +317,10 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
         for (ImageWriterQueue writer : mImageWriters) {
             writer.tearDown();
         }
+
+        // 在测试结束时清理 native 资源并保存模型数据
+        Logger.println("// MonkeySourceApeNative tearDown - cleaning up native resources");
+        AiClient.cleanupAndSaveModel();
     }
 
     public boolean validate() {
@@ -421,6 +425,19 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
         checkAppActivity();
         if (!hasEvent()) {
             try {
+                // 在生成事件前获取当前UI状态
+                AccessibilityNodeInfo rootNode = getRootInActiveWindow();
+                ComponentName topActivityName = this.getTopActivityComponentName();
+                
+                if (rootNode != null && topActivityName != null) {
+                    // 提取当前界面上所有可交互元素的图标
+                    try {
+                        extractWidgetIcons(rootNode, topActivityName.getClassName());
+                    } catch (Exception e) {
+                        Logger.errorPrintln("Error extracting widget icons: " + e.getMessage());
+                    }
+                }
+                
                 generateEvents();
             } catch (RuntimeException e) {
                 Logger.errorPrintln(e.getMessage());
@@ -460,22 +477,35 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
     /**
      * 提取当前界面上所有可交互元素的图标
      * @param rootNode 当前界面的根节点
+     * @param activityName 当前活动名称
      */
     private void extractWidgetIcons(AccessibilityNodeInfo rootNode, String activityName) {
-        if (rootNode == null) return;
+        if (rootNode == null || activityName == null || activityName.isEmpty()) {
+            Logger.errorPrintln("Invalid parameters for extractWidgetIcons");
+            return;
+        }
         
-        // 创建一个列表存储所有提取的图标信息
-        //List<WidgetIconInfo> iconInfoList = new ArrayList<>();
+        try {
+            // 创建一个Map存储所有提取的图标信息
         Map<String, String> iconMap = new HashMap<>();
         
-        // 递归遍历UI树并提取图标
+            // 递归遍历UI树并提取图标，限制最大图标数量以避免内存问题
         extractWidgetIconsRecursive(rootNode, iconMap);
         
         // 如果有图标被提取，将它们序列化并传递到C++端
         if (!iconMap.isEmpty()) {
+                Logger.println("Extracted " + iconMap.size() + " widget icons from " + activityName);
             String serializedIcons = serializeWidgetIcons(iconMap);
+                
             // 调用JNI方法将序列化后的图标信息传递到C++端
-            sendWidgetIconsToNative(activityName, serializedIcons);//todo
+                try {
+                    sendWidgetIconsToNative(activityName, serializedIcons);
+                } catch (Exception e) {
+                    Logger.errorPrintln("Failed to send widget icons to native: " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            Logger.errorPrintln("Error in extractWidgetIcons: " + e.getMessage());
         }
     }
 
@@ -489,18 +519,28 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
             node.getBoundsInScreen(bounds);
             
             // 捕获该区域的截图作为图标
-            Bitmap iconBitmap = captureWidgetIcon(bounds);
-            if (iconBitmap != null) {
+            Bitmap iconBitmap = null;
+            try {
+                iconBitmap = captureWidgetIcon(bounds);
+                if (iconBitmap != null && !iconBitmap.isRecycled()) {
                 // 生成widget的唯一标识
                 String widgetId = getWidgetIdentifier(node);
                 
                 // 将图标转换为Base64字符串
                 String base64Icon = bitmapToBase64(iconBitmap);
                 
-                // 添加到Map中
+                    // 只有当转换成功时才添加到Map中
+                    if (!base64Icon.isEmpty()) {
                 iconMap.put(widgetId, base64Icon);
-                
-                iconBitmap.recycle(); // 回收Bitmap资源
+                    }
+                }
+            } catch (Exception e) {
+                Logger.errorPrintln("Error processing widget icon: " + e.getMessage());
+            } finally {
+                // 确保在使用完毕后安全回收Bitmap
+                if (iconBitmap != null && !iconBitmap.isRecycled()) {
+                    iconBitmap.recycle();
+                }
             }
         }
         
@@ -508,8 +548,11 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo childNode = node.getChild(i);
             if (childNode != null) {
+                try {
                 extractWidgetIconsRecursive(childNode, iconMap);
+                } finally {
                 childNode.recycle(); // 确保回收子节点资源
+                }
             }
         }
     }
@@ -551,10 +594,14 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
      * @return 捕获的Bitmap，如果失败则返回null
      */
     private Bitmap captureWidgetIcon(Rect bounds) {
+        Bitmap screenBitmap = null;
         try {
             // 捕获整个屏幕
-            Bitmap screenBitmap = mUiAutomation.takeScreenshot();
-            if (screenBitmap == null) return null;
+            screenBitmap = mUiAutomation.takeScreenshot();
+            if (screenBitmap == null) {
+                Logger.errorPrintln("Failed to take screenshot");
+                return null;
+            }
 
             // 确保边界在屏幕范围内
             int screenWidth = screenBitmap.getWidth();
@@ -563,7 +610,7 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
             if (bounds.left < 0 || bounds.top < 0 || 
                 bounds.right > screenWidth || bounds.bottom > screenHeight ||
                 bounds.width() <= 0 || bounds.height() <= 0) {
-                screenBitmap.recycle();
+                Logger.errorPrintln("Invalid bounds: " + bounds.toShortString());
                 return null;
             }
 
@@ -576,11 +623,15 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
                 bounds.height()
             );
 
-            screenBitmap.recycle(); // 回收屏幕截图资源
             return iconBitmap;
         } catch (Exception e) {
             Logger.errorPrintln("Failed to capture widget icon: " + e.getMessage());
             return null;
+        } finally {
+            // 回收屏幕截图资源
+            if (screenBitmap != null && !screenBitmap.isRecycled()) {
+                screenBitmap.recycle();
+            }
         }
     }
 
@@ -590,10 +641,25 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
      * @return 转换后的字节数组
      */ 
     private String bitmapToBase64(Bitmap bitmap) {
+        if (bitmap == null || bitmap.isRecycled()) {
+            Logger.errorPrintln("Cannot convert null or recycled bitmap to Base64");
+            return "";
+        }
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        try {
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
         byte[] byteArray = stream.toByteArray();
         return Base64.encodeToString(byteArray, Base64.DEFAULT);
+        } catch (Exception e) {
+            Logger.errorPrintln("Error converting bitmap to Base64: " + e.getMessage());
+            return "";
+        } finally {
+            try {
+                stream.close();
+            } catch (Exception e) {
+                // 忽略关闭流的异常
+            }
+        }
     }
     /**
      * 序列化Widget图标信息为JSON字符串
@@ -601,17 +667,36 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
      * @return 序列化后的JSON字符串
      */
     private String serializeWidgetIcons(Map<String, String> iconMap) {
+        if (iconMap == null || iconMap.isEmpty()) {
+            return "{}";
+        }
+        
         try {
             JSONObject jsonObject = new JSONObject();
+            
+            // 限制图标数量，避免JSON过大
+            int maxIcons = 20;
+            int count = 0;
 
             // 遍历Map，将每个键值对添加到JSON对象中
             for (Map.Entry<String, String> entry : iconMap.entrySet()) {
-                jsonObject.put(entry.getKey(), entry.getValue());
+                if (count++ >= maxIcons) break;
+                
+                String key = entry.getKey();
+                String value = entry.getValue();
+                
+                // 验证值不为空且长度合理
+                if (key != null && value != null && !value.isEmpty() && value.length() < 100000) {
+                    jsonObject.put(key, value);
+                }
             }
 
             return jsonObject.toString();
         } catch (JSONException e) {
             Logger.errorPrintln("Failed to serialize widget icons: " + e.getMessage());
+            return "{}";
+        } catch (OutOfMemoryError e) {
+            Logger.errorPrintln("Out of memory when serializing widget icons");
             return "{}";
         }
     }
@@ -1100,8 +1185,13 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
             }
 
             Logger.println("// Event id: " + mEventId);
-            if(dealWithSystemUI(info))
+            if(dealWithSystemUI(info)) {
+                // 确保释放资源
+                if (info != null) {
+                    info.recycle();
+                }
                 return;
+            }
             break;
         }
 
@@ -1111,17 +1201,24 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
             info = getRootInActiveWindowSlow();
             if (info != null) {
                 Logger.println("// Event id: " + mEventId);
-                if(dealWithSystemUI(info))
+                if(dealWithSystemUI(info)) {
+                    // 确保释放资源
+                    info.recycle();
                     return;
+                }
             }
         }
 
         // If node is not null, build tree and recycle this resource.
-        if (info!=null){
-            extractWidgetIcons(info, topActivityName.getClassName());
+        if (info != null) {
+            try {
             stringOfGuiTree = TreeBuilder.dumpDocumentStrWithOutTree(info);
             if (mVerbose > 3) Logger.println("//" + stringOfGuiTree);
+            } catch (Exception e) {
+                Logger.errorPrintln("Error dumping GUI tree: " + e.getMessage());
+            } finally {
             info.recycle();
+            }
         }
 
         // For user specified actions, during executing, fuzzing is not allowed.
@@ -1163,14 +1260,21 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
                     Logger.infoFormat("Saving GUI tree to %s at step %d %s %s",
                             xmlFile, timeStep, sid, aid);
 
-                    BufferedWriter out;
+                    BufferedWriter out = null;
                     try {
                         out = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(xmlFile, false)));
                         out.write(stringOfGuiTree);
                         out.flush();
+                    } catch (Exception e) {
+                        Logger.errorPrintln("Error saving GUI tree: " + e.getMessage());
+                    } finally {
+                        if (out != null) {
+                            try {
                         out.close();
-                    } catch (java.io.FileNotFoundException e) {
-                    } catch (java.io.IOException e) {
+                            } catch (Exception e) {
+                                // 忽略关闭异常
+                            }
+                        }
                     }
                 }
 
@@ -1224,6 +1328,7 @@ public class MonkeySourceApeNative implements MonkeyEventSource {
                 }
 
             } catch (Exception e) {
+                Logger.errorPrintln("Error generating events: " + e.getMessage());
                 e.printStackTrace();
                 generateThrottleEvent(mThrottle);
             }
