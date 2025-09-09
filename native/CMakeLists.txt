@@ -68,6 +68,10 @@ include_directories(
   "project/jni/"
   "storage"
   "thirdpart/"
+  "thirdpart/cppjieba/include"
+  "thirdpart/cppjieba/deps"
+  "thirdpart/cppjieba/deps/limonp"
+  "thirdpart/cppjieba/deps/limonp/include"
   "thirdpart/flatbuffers/"
   "thirdpart/tinyxml2/"
   "thirdpart/json/"
@@ -86,6 +90,8 @@ file( GLOB SRC_LIST
       "thirdpart/tinyxml2/*.cpp"
       "thirdpart/flatbuffers/*.cpp"
       "thirdpart/json/*.hpp"
+      "thirdpart/cppjieba/src/*.cpp"
+      "thirdpart/cppjieba/deps/limonp/*.cpp"
       "project/jni/*.cpp")
 
 message(STATUS ${SRC_LIST})
@@ -97,6 +103,9 @@ add_library( # Sets the name of the library.
              # Provides a relative path to your source file(s).
              ${SRC_LIST}
         )
+
+# 启用 cppjieba 分词
+add_definitions(-DFASTBOT_USE_CPPJIEBA)
 
 find_package(Threads)
 

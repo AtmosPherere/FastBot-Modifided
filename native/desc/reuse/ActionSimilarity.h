@@ -14,6 +14,10 @@
 #include <vector>
 #include <unordered_map>
 
+#ifdef FASTBOT_USE_CPPJIEBA
+#include "cppjieba/Jieba.hpp"
+#endif
+
 namespace fastbotx {
 
 class ActionSimilarity {
@@ -45,6 +49,13 @@ public:
     // static bool isSimilar(const ActivityNameActionPtr& action1, const ActivityNameActionPtr& action2, double threshold = 0.8);
 
 private:
+    // 可选：中文分词（cppjieba）
+#ifdef FASTBOT_USE_CPPJIEBA
+    static std::unique_ptr<cppjieba::Jieba> jiebaPtr;
+#endif
+    static bool jiebaReady;
+    static void initializeJieba();
+
     // 计算文本相似度
     static double calculateTextSimilarity(const std::string& text1, const std::string& text2);
     
@@ -99,6 +110,17 @@ private:
     
     // 预处理文本（分词并转换为ID）
     static std::vector<int64_t> preprocessText(const std::string& text);
+
+    // 工具：判断是否包含中文（UTF-8 非ASCII)
+    static bool containsChineseUTF8(const std::string& text);
+    // 工具：英文/标识符样式拆分（用于英文、resource-id、activity）
+    static std::vector<std::string> splitEnglishLike(const std::string& text);
+    // 工具：拆分驼峰命名
+    static std::vector<std::string> splitCamelCase(const std::string& text);
+    
+    // 预处理函数
+    static std::string preprocessResourceId(const std::string& resourceId);
+    static std::string preprocessActivityName(const std::string& activityName);
 };
 
 } // namespace fastbotx

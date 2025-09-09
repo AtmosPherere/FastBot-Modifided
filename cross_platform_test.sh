@@ -18,7 +18,7 @@ NC='\033[0m'
 
 # 配置参数
 PACKAGE_NAME="com.netease.cloudmusic"  # 手机版网易云音乐包名
-TEST_DURATION=60   # 分钟 (稍长一些以观察跨平台效果)
+TEST_DURATION=15   # 分钟 (稍长一些以观察跨平台效果)
 THROTTLE=1000      # 毫秒 (稍快一些)
 RESULTS_DIR="cross_platform_test_$(date +%Y%m%d_%H%M%S)"
 LOCAL_MODEL_FILE="/sdcard/fastbot_${PACKAGE_NAME}.fbm"

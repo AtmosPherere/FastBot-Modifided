@@ -170,6 +170,21 @@ step6_push_libs() {
         log_error "原生库推送失败"
         exit 1
     fi
+    
+    # 推送词汇表文件
+    log_info "推送BERT词汇表文件..."
+    if [ -f "vocab.txt" ]; then
+        adb push vocab.txt /data/local/tmp/vocab.txt
+        if [ $? -eq 0 ]; then
+            log_success "词汇表文件推送完成"
+        else
+            log_error "词汇表文件推送失败"
+            exit 1
+        fi
+    else
+        log_error "vocab.txt 文件未找到"
+        exit 1
+    fi
 }
 
 # 步骤7: 推送 framework.jar

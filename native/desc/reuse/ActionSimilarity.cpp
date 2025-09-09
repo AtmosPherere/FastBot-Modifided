@@ -18,8 +18,219 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <cctype>
+#include <algorithm>
 
 namespace fastbotx {
+bool ActionSimilarity::jiebaReady = false;
+#ifdef FASTBOT_USE_CPPJIEBA
+std::unique_ptr<cppjieba::Jieba> ActionSimilarity::jiebaPtr;
+#endif
+
+static bool isASCII(const std::string& s) {
+    for (unsigned char c : s) {
+        if (c < 0x20 || c > 0x7e) return false;
+    }
+    return true;
+}
+
+bool ActionSimilarity::containsChineseUTF8(const std::string& text) {
+    // 简单判定：存在非ASCII即认为可能含中文
+    for (unsigned char c : text) {
+        if (c >= 0x80) return true;
+    }
+    return false;
+}
+
+std::vector<std::string> ActionSimilarity::splitEnglishLike(const std::string& text) {
+    std::vector<std::string> words;
+    std::string current;
+    for (char c : text) {
+        if (std::isspace(static_cast<unsigned char>(c)) || c == '.' || c == '_' || c == ':' || c == '/' || c == '\\') {
+            if (!current.empty()) { words.push_back(current); current.clear(); }
+        } else {
+            current.push_back(c);
+        }
+    }
+    if (!current.empty()) words.push_back(current);
+    return words;
+}
+
+// 拆分驼峰命名
+std::vector<std::string> ActionSimilarity::splitCamelCase(const std::string& text) {
+    std::vector<std::string> words;
+    if (text.empty()) return words;
+    
+    std::string current;
+    bool lastWasLower = false;
+    
+    for (char c : text) {
+        if (std::isupper(c)) {
+            if (lastWasLower && !current.empty()) {
+                words.push_back(current);
+                current.clear();
+            }
+            current.push_back(std::tolower(c));
+            lastWasLower = false;
+        } else {
+            current.push_back(c);
+            lastWasLower = std::islower(c);
+        }
+    }
+    
+    if (!current.empty()) {
+        words.push_back(current);
+    }
+    
+    return words;
+}
+
+// 预处理resource-id：取末段并拆驼峰/下划线，去品牌前缀
+std::string ActionSimilarity::preprocessResourceId(const std::string& resourceId) {
+    if (resourceId.empty()) return "";
+    
+    BLOG("预处理resource-id: '%s'", resourceId.c_str());
+    
+    // 1. 提取最后一段（resource-id中最后一个'/'后的部分；若无'/'，则取冒号后的部分；否则原样）
+    std::string lastSegment = resourceId;
+    size_t slashPos = resourceId.find_last_of('/');
+    if (slashPos != std::string::npos && slashPos + 1 < resourceId.length()) {
+        lastSegment = resourceId.substr(slashPos + 1);
+    } else {
+        size_t colonPos = resourceId.find_last_of(':');
+        if (colonPos != std::string::npos && colonPos + 1 < resourceId.length()) {
+            lastSegment = resourceId.substr(colonPos + 1);
+        }
+    }
+    
+    BLOG("提取最后一段: '%s'", lastSegment.c_str());
+    
+    // 2. 按驼峰和下划线拆分
+    std::vector<std::string> words;
+    
+    // 先按下划线拆分，再做驼峰拆分
+    std::stringstream ss(lastSegment);
+    std::string item;
+    while (std::getline(ss, item, '_')) {
+        if (!item.empty()) {
+            auto camelWords = splitCamelCase(item);
+            words.insert(words.end(), camelWords.begin(), camelWords.end());
+        }
+    }
+    
+    // 3. 过滤常见前缀
+    std::vector<std::string> filteredWords;
+    for (const auto& word : words) {
+        std::string lowerWord = word;
+        std::transform(lowerWord.begin(), lowerWord.end(), lowerWord.begin(), ::tolower);
+        
+        // 忽略常见前缀
+        if (lowerWord == "iv" || lowerWord == "btn" || lowerWord == "tv" || 
+            lowerWord == "img" || lowerWord == "image" || lowerWord == "button" || 
+            lowerWord == "text" || lowerWord == "view" || lowerWord == "layout" ||
+            lowerWord == "id" || lowerWord == "com" || lowerWord == "netease" ||
+            lowerWord == "cloudmusic" || lowerWord == "iot") {
+            continue;
+        }
+        
+        filteredWords.push_back(lowerWord);
+    }
+    
+    // 4. 组合结果
+    std::string result;
+    for (size_t i = 0; i < filteredWords.size(); ++i) {
+        if (i > 0) result += " ";
+        result += filteredWords[i];
+    }
+    
+    BLOG("预处理后的resource-id: '%s'", result.c_str());
+    return result;
+}
+
+// 预处理activity名称：仅取最后段并拆驼峰
+std::string ActionSimilarity::preprocessActivityName(const std::string& activityName) {
+    if (activityName.empty()) return "";
+    
+    BLOG("预处理activity名称: '%s'", activityName.c_str());
+    
+    // 1. 提取最后一段（最后一个点后的部分）
+    size_t dotPos = activityName.find_last_of('.');
+    std::string lastSegment;
+    if (dotPos != std::string::npos && dotPos + 1 < activityName.length()) {
+        lastSegment = activityName.substr(dotPos + 1);
+    } else {
+        lastSegment = activityName;
+    }
+    
+    BLOG("提取最后一段: '%s'", lastSegment.c_str());
+    
+    // 2. 按驼峰拆分
+    auto words = splitCamelCase(lastSegment);
+    
+    // 3. 过滤"Activity"后缀
+    std::vector<std::string> filteredWords;
+    for (const auto& word : words) {
+        std::string lowerWord = word;
+        std::transform(lowerWord.begin(), lowerWord.end(), lowerWord.begin(), ::tolower);
+        
+        if (lowerWord == "activity") {
+            continue;
+        }
+        
+        filteredWords.push_back(word);
+    }
+    
+    // 4. 组合结果
+    std::string result;
+    for (size_t i = 0; i < filteredWords.size(); ++i) {
+        if (i > 0) result += " ";
+        result += filteredWords[i];
+    }
+    
+    BLOG("预处理后的activity名称: '%s'", result.c_str());
+    return result;
+}
+
+void ActionSimilarity::initializeJieba() {
+#ifdef FASTBOT_USE_CPPJIEBA
+    if (jiebaReady) return;
+    try {
+#ifdef __ANDROID__
+        // 优先从设备上的共享目录加载
+        const char* DICT = "/sdcard/fastbot_cppjieba/dict/jieba.dict.utf8";
+        const char* HMM  = "/sdcard/fastbot_cppjieba/dict/hmm_model.utf8";
+        const char* USER = "/sdcard/fastbot_cppjieba/dict/user.dict.utf8";
+        const char* IDF  = "/sdcard/fastbot_cppjieba/dict/idf.utf8";
+        const char* STOP = "/sdcard/fastbot_cppjieba/dict/stop_words.utf8";
+        try {
+            jiebaPtr.reset(new cppjieba::Jieba(DICT, HMM, USER, IDF, STOP));
+        } catch (...) {
+            // 备选：尝试应用私有目录
+            DICT = "/data/local/tmp/cppjieba/dict/jieba.dict.utf8";
+            HMM  = "/data/local/tmp/cppjieba/dict/hmm_model.utf8";
+            USER = "/data/local/tmp/cppjieba/dict/user.dict.utf8";
+            IDF  = "/data/local/tmp/cppjieba/dict/idf.utf8";
+            STOP = "/data/local/tmp/cppjieba/dict/stop_words.utf8";
+            jiebaPtr.reset(new cppjieba::Jieba(DICT, HMM, USER, IDF, STOP));
+        }
+#else
+        const char* DICT = "/Users/atmo/program/Fastbot_Android_副本/native/thirdpart/cppjieba/dict/jieba.dict.utf8";
+        const char* HMM  = "/Users/atmo/program/Fastbot_Android_副本/native/thirdpart/cppjieba/dict/hmm_model.utf8";
+        const char* USER = "/Users/atmo/program/Fastbot_Android_副本/native/thirdpart/cppjieba/dict/user.dict.utf8";
+        const char* IDF  = "/Users/atmo/program/Fastbot_Android_副本/native/thirdpart/cppjieba/dict/idf.utf8";
+        const char* STOP = "/Users/atmo/program/Fastbot_Android_副本/native/thirdpart/cppjieba/dict/stop_words.utf8";
+        jiebaPtr.reset(new cppjieba::Jieba(DICT, HMM, USER, IDF, STOP));
+#endif
+        jiebaReady = true;
+        BLOG("cppjieba 初始化完成");
+    } catch (...) {
+        jiebaReady = false;
+        BLOGE("cppjieba 初始化失败，将回退到字符切分");
+    }
+#else
+    (void)jiebaReady;
+#endif
+}
 
 // 初始化静态成员变量
 Ort::Session* ActionSimilarity::bertSession = nullptr;
@@ -33,6 +244,11 @@ std::vector<const char*> ActionSimilarity::clipOutputNames;
 std::vector<int64_t> ActionSimilarity::clipInputShape;
 
 std::unordered_map<std::string, int64_t> ActionSimilarity::vocabMap;
+// 为避免链接期未定义，提供静态常量定义
+const int64_t ActionSimilarity::UNK_TOKEN_ID;
+const int64_t ActionSimilarity::CLS_TOKEN_ID;
+const int64_t ActionSimilarity::SEP_TOKEN_ID;
+const int64_t ActionSimilarity::PAD_TOKEN_ID;
 
 // 计算余弦相似度的辅助函数
 static float cosine_similarity(const std::vector<float>& a, const std::vector<float>& b) {
@@ -114,15 +330,16 @@ void ActionSimilarity::initializeModels() {
         if (!bertSession) {
             BLOG("正在初始化BERT模型");
 #ifdef __ANDROID__
-            std::string bertModelPath = "/data/local/tmp/bert-base-uncased.onnx";
+            // 使用与vocab一致的多语言模型
+            std::string bertModelPath = "/data/local/tmp/bert-base-multilingual-cased.onnx";
             BLOG("检查BERT模型路径: %s", bertModelPath.c_str());
             
             // 检查文件是否存在
             std::ifstream bertFile(bertModelPath);
             if (!bertFile.good()) {
                 BLOGE("BERT模型文件不存在或无法访问: %s", bertModelPath.c_str());
-                // 尝试在其他位置查找
-                bertModelPath = "/sdcard/bert-base-uncased.onnx";
+                // 尝试在其他位置查找（SD卡）
+                bertModelPath = "/sdcard/bert-base-multilingual-cased.onnx";
                 BLOG("尝试备用BERT模型路径: %s", bertModelPath.c_str());
                 
                 std::ifstream bertFile2(bertModelPath);
@@ -233,8 +450,25 @@ void ActionSimilarity::initializeVocab() {
     BLOG("开始加载官方BERT词汇表");
     
     // 加载官方BERT词汇表
-    std::string vocabPath = "/Users/atmo/program/Fastbot_Android_副本/vocab.txt";
+    std::string vocabPath;
+#ifdef __ANDROID__
+    // Android设备上的路径
+    vocabPath = "/data/local/tmp/vocab.txt";
+    BLOG("尝试Android词汇表路径: %s", vocabPath.c_str());
+    
     std::ifstream vocabFile(vocabPath);
+    if (!vocabFile.is_open()) {
+        // 尝试备用路径
+        vocabPath = "/sdcard/vocab.txt";
+        BLOG("尝试备用Android词汇表路径: %s", vocabPath.c_str());
+        vocabFile.open(vocabPath);
+    }
+#else
+    // macOS/开发环境路径
+    vocabPath = "/Users/atmo/program/Fastbot_Android_副本/vocab.txt";
+    BLOG("尝试macOS词汇表路径: %s", vocabPath.c_str());
+    std::ifstream vocabFile(vocabPath);
+#endif
     
     if (!vocabFile.is_open()) {
         BLOGE("无法打开词汇表文件: %s", vocabPath.c_str());
@@ -243,6 +477,7 @@ void ActionSimilarity::initializeVocab() {
         vocabMap["[CLS]"] = CLS_TOKEN_ID;
         vocabMap["[SEP]"] = SEP_TOKEN_ID;
         vocabMap["[PAD]"] = PAD_TOKEN_ID;
+        BLOG("使用简单词汇表，仅包含特殊token");
         return;
     }
     
@@ -286,26 +521,38 @@ std::vector<std::string> ActionSimilarity::tokenize(const std::string& text) {
 
     BLOG("开始分词: '%s'", text.c_str());
 
-    // 使用WordPiece分词（简化版本）
-    // 1. 首先按空格和标点符号分割
+    // 中文优先用jieba（若可用）；英文/标识符走规则切分
     std::vector<std::string> words;
-    std::string currentWord;
-    
-    for (char c : text) {
-        if (std::isspace(c) || c == '.' || c == '_' || c == ':' || c == '/' || c == '\\') {
-            if (!currentWord.empty()) {
-                words.push_back(currentWord);
-                currentWord.clear();
-            }
+    if (containsChineseUTF8(text)) {
+#ifdef FASTBOT_USE_CPPJIEBA
+        initializeJieba();
+        if (jiebaReady && jiebaPtr) {
+            std::vector<std::string> cut;
+            jiebaPtr->Cut(text, cut, true); // 搜索引擎模式
+            words.assign(cut.begin(), cut.end());
         } else {
-            currentWord += c;
+            // 回退：中文按UTF-8逐字切分
+            std::string buf;
+            for (unsigned char c : text) {
+                if ((c & 0xC0) != 0x80 && !buf.empty()) { words.push_back(buf); buf.clear(); }
+                buf.push_back(c);
+            }
+            if (!buf.empty()) words.push_back(buf);
         }
-    }
-    if (!currentWord.empty()) {
-        words.push_back(currentWord);
+#else
+        // 未启用cppjieba宏：中文逐字
+        std::string buf;
+        for (unsigned char c : text) {
+            if ((c & 0xC0) != 0x80 && !buf.empty()) { words.push_back(buf); buf.clear(); }
+            buf.push_back(c);
+        }
+        if (!buf.empty()) words.push_back(buf);
+#endif
+    } else {
+        words = splitEnglishLike(text);
     }
 
-    // 2. 对每个词进行WordPiece分词
+    // 2. 对每个词进行WordPiece分词（仅当词不在词表时）
     for (const std::string& word : words) {
         if (word.empty()) continue;
         
@@ -454,11 +701,26 @@ std::vector<float> ActionSimilarity::getBertEmbedding(const std::string& text) {
             return std::vector<float>();
         }
     }
+    
+    // 确保词汇表已加载
+    if (vocabMap.empty()) {
+        BLOG("词汇表未加载，开始初始化词汇表");
+        initializeVocab();
+    }
 
     try {
         // 预处理文本
         std::vector<int64_t> inputIds = preprocessText(text);
-        std::vector<int64_t> attentionMask(bertInputShape[1], 1);
+        // 构建有效的attention mask：非PAD为1，PAD为0
+        std::vector<int64_t> attentionMask(bertInputShape[1], 0);
+        int64_t padId = PAD_TOKEN_ID;
+        if (!vocabMap.empty()) {
+            auto itPad = vocabMap.find("[PAD]");
+            if (itPad != vocabMap.end()) padId = itPad->second;
+        }
+        for (size_t i = 0; i < inputIds.size(); ++i) {
+            attentionMask[i] = (inputIds[i] == padId) ? 0 : 1;
+        }
         std::vector<int64_t> tokenTypeIds(bertInputShape[1], 0);
 
         // 创建输入tensor
@@ -474,15 +736,30 @@ std::vector<float> ActionSimilarity::getBertEmbedding(const std::string& text) {
         // 获取输出向量
         float* outputData = outputTensors[0].GetTensorMutableData<float>();
         size_t outputSize = outputTensors[0].GetTensorTypeAndShapeInfo().GetElementCount();
-        
-        // 对输出向量进行平均池化得到句子向量
-        std::vector<float> embedding(outputSize / bertInputShape[1], 0.0f);
-        for (size_t i = 0; i < outputSize / bertInputShape[1]; ++i) {
-            for (size_t j = 0; j < bertInputShape[1]; ++j) {
-                embedding[i] += outputData[j * (outputSize / bertInputShape[1]) + i];
-            }
-            embedding[i] /= bertInputShape[1];
+        // BERT输出形状: [1, sequence_length, hidden_size]
+        size_t sequenceLength = bertInputShape[1];
+        size_t hiddenSize = outputSize / sequenceLength;
+
+        BLOG("BERT输出形状: batch_size=1, sequence_length=%zu, hidden_size=%zu", sequenceLength, hiddenSize);
+
+        std::vector<float> embedding(hiddenSize, 0.0f);
+        // 掩码平均池化：仅对attentionMask==1的位置做平均
+        int64_t validCount = 0;
+        for (size_t j = 0; j < sequenceLength; ++j) {
+            if (attentionMask[j] == 1) validCount++;
         }
+        if (validCount == 0) validCount = 1; // 防止除零
+        for (size_t i = 0; i < hiddenSize; ++i) {
+            float sumVal = 0.0f;
+            for (size_t j = 0; j < sequenceLength; ++j) {
+                if (attentionMask[j] == 1) {
+                    sumVal += outputData[j * hiddenSize + i];
+                }
+            }
+            embedding[i] = sumVal / static_cast<float>(validCount);
+        }
+
+        BLOG("BERT嵌入向量计算完成，向量维度: %zu", embedding.size());
 
         return embedding;
     } catch (const std::exception& e) {
@@ -506,25 +783,25 @@ double ActionSimilarity::calculateTextSimilarity(const std::string& text1, const
         return 0.0;
     }
     
-    // 调试：显示分词结果
-    auto tokens1 = tokenize(text1);
-    auto tokens2 = tokenize(text2);
-    BLOG("分词结果1: [%s]", [&tokens1]() {
-        std::string result;
-        for (size_t i = 0; i < tokens1.size(); ++i) {
-            if (i > 0) result += ", ";
-            result += "'" + tokens1[i] + "'";
-        }
-        return result;
-    }().c_str());
-    BLOG("分词结果2: [%s]", [&tokens2]() {
-        std::string result;
-        for (size_t i = 0; i < tokens2.size(); ++i) {
-            if (i > 0) result += ", ";
-            result += "'" + tokens2[i] + "'";
-        }
-        return result;
-    }().c_str());
+    // // 调试：显示分词结果
+    // auto tokens1 = tokenize(text1);
+    // auto tokens2 = tokenize(text2);
+    // BLOG("分词结果1: [%s]", [&tokens1]() {
+    //     std::string result;
+    //     for (size_t i = 0; i < tokens1.size(); ++i) {
+    //         if (i > 0) result += ", ";
+    //         result += "'" + tokens1[i] + "'";
+    //     }
+    //     return result;
+    // }().c_str());
+    // BLOG("分词结果2: [%s]", [&tokens2]() {
+    //     std::string result;
+    //     for (size_t i = 0; i < tokens2.size(); ++i) {
+    //         if (i > 0) result += ", ";
+    //         result += "'" + tokens2[i] + "'";
+    //     }
+    //     return result;
+    // }().c_str());
     
     // 尝试使用BERT模型计算相似度
     try {
@@ -544,13 +821,53 @@ double ActionSimilarity::calculateTextSimilarity(const std::string& text1, const
             throw std::runtime_error("BERT模型未初始化");
         }
         
-    auto embedding1 = getBertEmbedding(text1);
-    auto embedding2 = getBertEmbedding(text2);
-    
-    if (embedding1.empty() || embedding2.empty()) {
+        // 确保词汇表已加载
+        if (vocabMap.empty()) {
+            BLOG("词汇表未加载，开始初始化词汇表");
+            initializeVocab();
+        }
+        
+        auto embedding1 = getBertEmbedding(text1);
+        auto embedding2 = getBertEmbedding(text2);
+        
+        if (embedding1.empty() || embedding2.empty()) {
             BLOGE("获取BERT嵌入向量失败，使用备用方法");
             throw std::runtime_error("获取BERT嵌入向量失败");
         }
+        
+        // // 验证嵌入向量
+        // if (embedding1.size() != embedding2.size()) {
+        //     BLOGE("两个嵌入向量维度不匹配: %zu vs %zu", embedding1.size(), embedding2.size());
+        //     throw std::runtime_error("嵌入向量维度不匹配");
+        // }
+        
+        // // 计算向量范数用于调试
+        // float norm1 = 0.0f, norm2 = 0.0f;
+        // for (size_t i = 0; i < embedding1.size(); ++i) {
+        //     norm1 += embedding1[i] * embedding1[i];
+        //     norm2 += embedding2[i] * embedding2[i];
+        // }
+        // norm1 = std::sqrt(norm1);
+        // norm2 = std::sqrt(norm2);
+        // BLOG("嵌入向量范数: text1=%.6f, text2=%.6f", norm1, norm2);
+        
+        // // 检查向量是否相同
+        // bool vectorsIdentical = true;
+        // float maxDiff = 0.0f;
+        // for (size_t i = 0; i < embedding1.size(); ++i) {
+        //     float diff = std::abs(embedding1[i] - embedding2[i]);
+        //     if (diff > maxDiff) maxDiff = diff;
+        //     if (diff > 1e-6f) {
+        //         vectorsIdentical = false;
+        //     }
+        // }
+        // BLOG("向量是否相同: %s, 最大差异: %.6f", vectorsIdentical ? "是" : "否", maxDiff);
+        
+        // // 输出前几个向量元素用于调试
+        // BLOG("向量1前5个元素: [%.6f, %.6f, %.6f, %.6f, %.6f]", 
+        //      embedding1[0], embedding1[1], embedding1[2], embedding1[3], embedding1[4]);
+        // BLOG("向量2前5个元素: [%.6f, %.6f, %.6f, %.6f, %.6f]", 
+        //      embedding2[0], embedding2[1], embedding2[2], embedding2[3], embedding2[4]);
         
         double similarity = cosine_similarity(embedding1, embedding2);
         BLOG("BERT模型计算文本相似度结果: %f", similarity);
@@ -598,16 +915,32 @@ double ActionSimilarity::calculateResourceIdSimilarity(const std::string& id1, c
         return 0.0;
     }
     
+    // 预处理resource-id
+    std::string processedId1 = preprocessResourceId(id1);
+    std::string processedId2 = preprocessResourceId(id2);
+    
+    BLOG("预处理后的resource-id比较: '%s' vs '%s'", processedId1.c_str(), processedId2.c_str());
+    
+    // 如果预处理后都为空，认为相似
+    if (processedId1.empty() && processedId2.empty()) {
+        return 1.0;
+    }
+    
+    // 如果预处理后只有一个为空，认为不相似
+    if (processedId1.empty() || processedId2.empty()) {
+        return 0.0;
+    }
+    
     // 使用BERT模型计算相似度
-    auto embedding1 = getBertEmbedding(id1);
-    auto embedding2 = getBertEmbedding(id2);
+    auto embedding1 = getBertEmbedding(processedId1);
+    auto embedding2 = getBertEmbedding(processedId2);
     
     if (embedding1.empty() || embedding2.empty()) {
         // 如果BERT模型失败，回退到字符串比较
-        if (id1 == id2) {
+        if (processedId1 == processedId2) {
             return 1.0;
         }
-        if (id1.find(id2) != std::string::npos || id2.find(id1) != std::string::npos) {
+        if (processedId1.find(processedId2) != std::string::npos || processedId2.find(processedId1) != std::string::npos) {
             return 0.8;
         }
         return 0.0;
@@ -627,13 +960,29 @@ double ActionSimilarity::calculateActivitySimilarity(const std::string& activity
         return 0.0;
     }
     
+    // 预处理activity名称
+    std::string processedActivity1 = preprocessActivityName(activity1);
+    std::string processedActivity2 = preprocessActivityName(activity2);
+    
+    BLOG("预处理后的activity名称比较: '%s' vs '%s'", processedActivity1.c_str(), processedActivity2.c_str());
+    
+    // 如果预处理后都为空，认为相似
+    if (processedActivity1.empty() && processedActivity2.empty()) {
+        return 1.0;
+    }
+    
+    // 如果预处理后只有一个为空，认为不相似
+    if (processedActivity1.empty() || processedActivity2.empty()) {
+        return 0.0;
+    }
+    
     // 使用BERT模型计算相似度
-    auto embedding1 = getBertEmbedding(activity1);
-    auto embedding2 = getBertEmbedding(activity2);
+    auto embedding1 = getBertEmbedding(processedActivity1);
+    auto embedding2 = getBertEmbedding(processedActivity2);
     
     if (embedding1.empty() || embedding2.empty()) {
         // 如果BERT模型失败，回退到精确匹配
-        return (activity1 == activity2) ? 1.0 : 0.0;
+        return (processedActivity1 == processedActivity2) ? 1.0 : 0.0;
     }
     
     return cosine_similarity(embedding1, embedding2);
