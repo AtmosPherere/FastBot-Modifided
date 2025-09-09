@@ -2,3 +2,6 @@ monkeyq.jar
 monkeyq.jar
 cross_platform/
 test_results/
+
+# Ignore Gradle cache
+.gradle/
