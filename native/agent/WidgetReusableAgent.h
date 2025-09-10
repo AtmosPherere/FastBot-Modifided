@@ -8,6 +8,8 @@
 #include "Model.h"
 #include <vector>
 #include <map>
+#include <set>
+#include <mutex>
 
 namespace fastbotx {
 
@@ -155,6 +157,15 @@ namespace fastbotx {
 
         // 外部模型访问锁
         mutable std::mutex _externalModelsLock;
+        
+        // ========== 索引与缓存 ==========
+        // 外部action相似度匹配缓存：当前actionHash -> 匹配结果
+        mutable std::map<uint64_t, ExternalActionMatch> _externalActionMatchCache;
+        mutable std::mutex _externalActionMatchCacheLock;
+
+        // 外部widget相似访问索引：platformId -> (externalWidgetHash -> {visitedLocalWidgetHash})
+        mutable std::map<std::string, std::map<uint64_t, std::set<uint64_t>>> _externalWidgetVisitedIndex;
+        mutable std::mutex _externalWidgetIndexLock;
         
 };
 

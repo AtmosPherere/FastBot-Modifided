@@ -255,16 +255,16 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionInReuseModel() const {
     }
 
     // 检查有多少操作在widget重用模型中
-    int actionsInModel = 0;
-    for (const auto &action: targetActions) {
-        if (this->_widgetReuseModel.find(action->hash()) != this->_widgetReuseModel.end()) {
-            actionsInModel++;
-            BLOG("Action hash=%llu found in widget reuse model", action->hash());
-        } else {
-            BLOG("Action hash=%llu NOT found in widget reuse model", action->hash());
-        }
-    }
-    BLOG("Actions in widget reuse model: %d out of %zu target actions", actionsInModel, targetActions.size());
+    // int actionsInModel = 0;
+    // for (const auto &action: targetActions) {
+    //     if (this->_widgetReuseModel.find(action->hash()) != this->_widgetReuseModel.end()) {
+    //         actionsInModel++;
+    //         BLOG("Action hash=%llu found in widget reuse model", action->hash());
+    //     } else {
+    //         BLOG("Action hash=%llu NOT found in widget reuse model", action->hash());
+    //     }
+    // }
+    // BLOG("Actions in widget reuse model: %d out of %zu target actions", actionsInModel, targetActions.size());
 
     for (const auto &action: this->_newState->targetActions()) {
         uintptr_t actionHash = action->hash();
@@ -276,15 +276,30 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionInReuseModel() const {
             continue;
         }
 
+        // 检查本地模型
         bool inLocalModel = (this->_widgetReuseModel.find(actionHash) != this->_widgetReuseModel.end());
         ExternalActionMatch externalMatch;
 
-        // 检查外部模型
+        // 检查外部模型（先查询缓存）
         auto activityNameAction = std::dynamic_pointer_cast<ActivityNameAction>(action);
         if (activityNameAction) {
             BLOG("尝试在外部模型中查找相似action: hash=%llu, type=%s", 
                  actionHash, actName[action->getActionType()].c_str());
-            externalMatch = findSimilarActionInExternalModels(activityNameAction, 0.8);
+            // 先命中缓存
+            bool cacheHit = false;
+            {
+                std::lock_guard<std::mutex> cacheLock(_externalActionMatchCacheLock);
+                auto it = _externalActionMatchCache.find(actionHash);
+                if (it != _externalActionMatchCache.end() && it->second.found && it->second.similarity >= 0.5) {
+                    externalMatch = it->second;
+                    cacheHit = true;
+                    BLOG("外部action匹配在selectUnperformedActionInReuseModel命中缓存: platform=%s, similarity=%.3f",
+                         externalMatch.platformId.c_str(), externalMatch.similarity);
+                }
+            }
+            if (!cacheHit) {
+                externalMatch = findSimilarActionInExternalModels(activityNameAction, 0.5);
+            }
             
             if (externalMatch.found) {
                 BLOG("成功在外部模型中找到相似action: platform=%s, similarity=%.3f",
@@ -315,8 +330,7 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionInReuseModel() const {
                     qualityValue = this->probabilityOfVisitingNewWidgetsFromExternalModel(
                         action, externalMatch);
 
-                    // 根据相似度调整质量值
-                    qualityValue *= externalMatch.similarity;
+
                 }
 
                 BLOG("Calculated probability for action hash=%llu: %f", actionHash, qualityValue);
@@ -373,7 +387,7 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
         bool inExternalModel = false;
         auto activityNameAction = std::dynamic_pointer_cast<ActivityNameAction>(action);
         if (activityNameAction) {
-            inExternalModel = isActionInAnyModel(activityNameAction, 0.8);
+            inExternalModel = isActionInAnyModel(activityNameAction, 0.5);
         }
 
         // 只有既不在本地模型也不在外部模型中的action才加入候选集
@@ -431,18 +445,31 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
                     rewardValue = this->probabilityOfVisitingNewActivities(lastSelectedAction, visitedActivities);
                     BLOG("Action在本机模型中找到，奖励值=%.3f", rewardValue);
                 } else {
-                    // 本机模型中没找到，检查外部模型
+                    // 本机模型中没找到，检查外部模型（先查缓存）
                     auto activityNameAction = std::dynamic_pointer_cast<ActivityNameAction>(lastSelectedAction);
                     if (activityNameAction) {
-                        auto externalMatch = findSimilarActionInExternalModels(activityNameAction, 0.8);
+                        WidgetReusableAgent::ExternalActionMatch externalMatch;
+                        bool cacheHit = false;
+                        {
+                            std::lock_guard<std::mutex> cacheLock(_externalActionMatchCacheLock);
+                            auto it = _externalActionMatchCache.find(activityNameAction->hash());
+                            if (it != _externalActionMatchCache.end() && it->second.found && it->second.similarity >= 0.5) {
+                                externalMatch = it->second;
+                                cacheHit = true;
+                                BLOG("computeReward: 外部action匹配命中缓存: platform=%s, similarity=%.3f",
+                                     externalMatch.platformId.c_str(), externalMatch.similarity);
+                            }
+                        }
+                        if (!cacheHit) {
+                            externalMatch = findSimilarActionInExternalModels(activityNameAction, 0.5);
+                        }
                         if (externalMatch.found) {
                             // 在外部模型中找到相似action
                             rewardValue = this->probabilityOfVisitingNewWidgetsFromExternalModel(
                                 activityNameAction, externalMatch);
-                            // 根据相似度调整奖励值
-                            rewardValue *= externalMatch.similarity;
-                            BLOG("Action在外部模型中找到相似匹配，平台=%s，相似度=%.3f，调整后奖励值=%.3f",
-                                 externalMatch.platformId.c_str(), externalMatch.similarity, rewardValue);
+                            
+                            BLOG("Action在外部模型中找到相似匹配，平台=%s，相似度=%.3f",
+                                 externalMatch.platformId.c_str(), externalMatch.similarity);
                         } else {
                             // 完全新的action，给予最高奖励
                             rewardValue = 1.0;
@@ -496,10 +523,24 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
                         value += 0.5;
                     }
                 } else {
-                    // 本机模型中没找到，检查外部模型
+                    // 本机模型中没找到，检查外部模型（先查缓存）
                     auto activityNameAction = std::dynamic_pointer_cast<ActivityNameAction>(action);
                     if (activityNameAction) {
-                        auto externalMatch = findSimilarActionInExternalModels(activityNameAction, 0.8);
+                        WidgetReusableAgent::ExternalActionMatch externalMatch;
+                        bool cacheHit = false;
+                        {
+                            std::lock_guard<std::mutex> cacheLock(_externalActionMatchCacheLock);
+                            auto it = _externalActionMatchCache.find(activityNameAction->hash());
+                            if (it != _externalActionMatchCache.end() && it->second.found && it->second.similarity >= 0.5) {
+                                externalMatch = it->second;
+                                cacheHit = true;
+                                BLOG("getStateExpectation: 外部action匹配命中缓存: platform=%s, similarity=%.3f",
+                                     externalMatch.platformId.c_str(), externalMatch.similarity);
+                            }
+                        }
+                        if (!cacheHit) {
+                            externalMatch = findSimilarActionInExternalModels(activityNameAction, 0.5);
+                        }
                         if (externalMatch.found) {
                             // 在外部模型中找到相似action，给予中等奖励
                             value += 0.7;
@@ -760,6 +801,15 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
 
         // 加载本地模型后，自动检测并加载多平台模型
         BLOG("本地模型加载完成，开始检测多平台模型...");
+        // 清理旧的外部匹配缓存，避免使用过期索引
+        {
+            std::lock_guard<std::mutex> cacheLock(_externalActionMatchCacheLock);
+            _externalActionMatchCache.clear();
+        }
+        {
+            std::lock_guard<std::mutex> idxLock(_externalWidgetIndexLock);
+            _externalWidgetVisitedIndex.clear();
+        }
         try {
             autoLoadMultiPlatformModels("/sdcard", packageName);
         } catch (const std::exception& e) {
@@ -847,6 +897,15 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
                 BLOG("清空现有的 %zu 个外部平台模型", _externalPlatformModels.size());
                 _externalPlatformModels.clear();
             }
+        }
+        // 同步清空与外部模型关联的缓存与索引
+        {
+            std::lock_guard<std::mutex> cacheLock(_externalActionMatchCacheLock);
+            _externalActionMatchCache.clear();
+        }
+        {
+            std::lock_guard<std::mutex> idxLock(_externalWidgetIndexLock);
+            _externalWidgetVisitedIndex.clear();
         }
 
         // 搜索其他平台的模型文件
@@ -1192,13 +1251,27 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
 
         uint64_t actionHash = action->hash();
 
-        // 首先检查本地模型
+        // 先检查缓存命中（仅缓存成功匹配的结果）
         {
-            std::lock_guard<std::mutex> reuseGuard(this->_widgetReuseModelLock);
-            if (this->_widgetReuseModel.find(actionHash) != this->_widgetReuseModel.end()) {
-                return true;
+            std::lock_guard<std::mutex> cacheLock(_externalActionMatchCacheLock);
+            auto it = _externalActionMatchCache.find(actionHash);
+            if (it != _externalActionMatchCache.end()) {
+                const auto& cached = it->second;
+                if (cached.found && cached.similarity >= similarityThreshold) {
+                    BLOG("外部action匹配命中缓存: platform=%s, similarity=%.3f, actionHash=%llu",
+                         cached.platformId.c_str(), cached.similarity, cached.actionHash);
+                    return true;
+                }
             }
         }
+
+        // // 首先检查本地模型
+        // {
+        //     std::lock_guard<std::mutex> reuseGuard(this->_widgetReuseModelLock);
+        //     if (this->_widgetReuseModel.find(actionHash) != this->_widgetReuseModel.end()) {
+        //         return true;
+        //     }
+        // }
 
         // 检查外部模型
         auto match = findSimilarActionInExternalModels(action, similarityThreshold);
@@ -1257,7 +1330,7 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
             }
         }
 
-        // 使用调用方传入的阈值，不再自适应调整
+
         BLOG("使用相似度阈值: %.2f（按入参保持不变）", similarityThreshold);
 
         // 遍历所有外部模型
@@ -1334,6 +1407,11 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
 
                             BLOG("匹配成功（提前返回）: platform=%s, similarity=%.3f, actionHash=%llu, 阈值=%.2f",
                                  result.platformId.c_str(), result.similarity, result.actionHash, similarityThreshold);
+                            // 写入缓存
+                            {
+                                std::lock_guard<std::mutex> cacheLock(_externalActionMatchCacheLock);
+                                _externalActionMatchCache[result.actionHash] = result;
+                            }
                             return result; // 提前返回，提升性能
                         } else {
                             BLOG("相似度 %.3f 低于阈值 %.2f，不匹配", similarity, similarityThreshold);
@@ -1386,11 +1464,32 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
             // 由于是外部模型的widget，需要使用相似度匹配
             bool isVisited = false;
 
-            // 首先检查精确匹配
+            // 首先使用索引与精确匹配
             if (_visitedWidgets.find(widgetHash) != _visitedWidgets.end()) {
                 isVisited = true;
             } else {
-                // 如果没有精确匹配，使用相似度匹配
+                // 快速索引：platformId + externalWidgetHash 对应的本地已判相似widget集合
+                bool indexedHit = false;
+                {
+                    std::lock_guard<std::mutex> idxLock(_externalWidgetIndexLock);
+                    auto pit = _externalWidgetVisitedIndex.find(externalMatch.platformId);
+                    if (pit != _externalWidgetVisitedIndex.end()) {
+                        auto wit = pit->second.find(widgetHash);
+                        if (wit != pit->second.end()) {
+                            for (const auto& localHash : wit->second) {
+                                if (_visitedWidgets.find(localHash) != _visitedWidgets.end()) {
+                                    indexedHit = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (indexedHit) {
+                    BLOG("外部widget命中相似索引，视为已访问");
+                    isVisited = true;
+                } else {
+                // 如果没有精确匹配或索引命中，使用相似度匹配
                 // 查找外部模型中该widget的属性
                 auto externalWidgetAttr = this->findExternalWidgetAttributes(widgetHash, externalMatch.platformId);
                 if (externalWidgetAttr) {
@@ -1405,14 +1504,20 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
                                     externalWidgetAttr->widgetText, externalWidgetAttr->activityName,
                                     externalWidgetAttr->widgetResourceId, externalWidgetAttr->widgetIconBase64);
 
-                                if (similarity >= 0.8) {
+                                if (similarity >= 0.5) {
                                     BLOG("外部widget与已访问widget相似度匹配: 相似度=%.3f", similarity);
+                                    // 写入索引缓存
+                                    {
+                                        std::lock_guard<std::mutex> idxLock(_externalWidgetIndexLock);
+                                        _externalWidgetVisitedIndex[externalMatch.platformId][widgetHash].insert(currentWidget->hash());
+                                    }
                                     isVisited = true;
                                     break;
                                 }
                             }
                         }
                     }
+                }
                 }
             }
 
@@ -1471,29 +1576,29 @@ ActionPtr WidgetReusableAgent::selectUnperformedActionNotInReuseModel() const {
             uintptr_t actionHash = action->hash();
 
             // 如果action未被访问过，优先返回
-            if (action->getVisitedCount() <= 0) {
-                bool inLocalModel = (this->_widgetReuseModel.find(actionHash) != this->_widgetReuseModel.end());
-                ExternalActionMatch externalMatch;
+            // if (action->getVisitedCount() <= 0) {
+            //     bool inLocalModel = (this->_widgetReuseModel.find(actionHash) != this->_widgetReuseModel.end());
+            //     ExternalActionMatch externalMatch;
 
-                auto activityNameAction = std::dynamic_pointer_cast<ActivityNameAction>(action);
-                if (activityNameAction) {
-                    externalMatch = findSimilarActionInExternalModels(activityNameAction, 0.8);
-                }
+            //     auto activityNameAction = std::dynamic_pointer_cast<ActivityNameAction>(action);
+            //     if (activityNameAction) {
+            //         externalMatch = findSimilarActionInExternalModels(activityNameAction, 0.8);
+            //     }
 
-                if (inLocalModel || externalMatch.found) {
-                    // 计算概率
-                    if (inLocalModel) {
-                        qv += this->probabilityOfVisitingNewActivities(action, visitedActivities);
-                    } else if (externalMatch.found) {
-                        qv += this->probabilityOfVisitingNewWidgetsFromExternalModel(
-                            action, externalMatch);
-                        qv *= externalMatch.similarity; // 根据相似度调整
-                    }
-                } else {
-                    BLOG("qvalue pick return an unvisited action not in any model: %s", action->toString().c_str());
-                    return action;
-                }
-            }
+            //     if (inLocalModel || externalMatch.found) {
+            //         // 计算概率
+            //         if (inLocalModel) {
+            //             qv += this->probabilityOfVisitingNewActivities(action, visitedActivities);
+            //         } else if (externalMatch.found) {
+            //             qv += this->probabilityOfVisitingNewWidgetsFromExternalModel(
+            //                 action, externalMatch);
+
+            //         }
+            //     } else {
+            //         BLOG("qvalue pick return an unvisited action not in any model: %s", action->toString().c_str());
+            //         return action;
+            //     }
+            // }
 
             // 添加Q值
             qv += getQValue(action);
